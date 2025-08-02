@@ -1,13 +1,14 @@
 package trasher_test
 
 import (
-	"github.com/DIvanCode/filestorage/internal/models"
-	"github.com/DIvanCode/filestorage/internal/trasher"
-	"github.com/DIvanCode/filestorage/pkg/artifact"
+	"github.com/DIvanCode/filestorage/internal/artifact"
+	trash "github.com/DIvanCode/filestorage/internal/trasher"
+	"github.com/DIvanCode/filestorage/pkg/artifact/id"
 	"github.com/DIvanCode/filestorage/pkg/config"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -15,9 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newArtifactID(t *testing.T, id string) artifact.ID {
-	var artifactID artifact.ID
-	require.NoError(t, artifactID.FromString(id))
+func newArtifactID(t *testing.T, idNum int) id.ID {
+	idStr := strconv.Itoa(idNum)
+	for len(idStr) < 20 {
+		idStr = "0" + idStr
+	}
+
+	var artifactID id.ID
+	require.NoError(t, artifactID.FromString(idStr))
 	return artifactID
 }
 
@@ -25,13 +31,13 @@ type MockStorage struct {
 	mock.Mock
 }
 
-func (m *MockStorage) GetArtifactMeta(id artifact.ID) (models.Meta, error) {
-	args := m.Called(id)
-	return args.Get(0).(models.Meta), args.Error(1)
+func (m *MockStorage) GetArtifactMeta(artifactID id.ID) (artifact.Meta, error) {
+	args := m.Called(artifactID)
+	return args.Get(0).(artifact.Meta), args.Error(1)
 }
 
-func (m *MockStorage) RemoveArtifact(id artifact.ID) error {
-	args := m.Called(id)
+func (m *MockStorage) RemoveArtifact(artifactID id.ID) error {
+	args := m.Called(artifactID)
 	return args.Error(0)
 }
 
@@ -40,18 +46,18 @@ func TestTrasherCollectAndRemove(t *testing.T) {
 	shardDir := filepath.Join(tmpRoot, "00")
 	require.NoError(t, os.MkdirAll(shardDir, 0777))
 
-	id := newArtifactID(t, "00000000000000000001")
-	require.NoError(t, os.Mkdir(filepath.Join(shardDir, id.String()), 0777))
+	artifactID := newArtifactID(t, 1)
+	require.NoError(t, os.Mkdir(filepath.Join(shardDir, artifactID.String()), 0777))
 
-	meta := models.Meta{ID: id, TrashTime: time.Now().Add(-time.Hour)}
+	meta := artifact.Meta{ID: artifactID, TrashTime: time.Now().Add(-time.Hour)}
 
 	mockStorage := new(MockStorage)
-	mockStorage.On("GetArtifactMeta", id).Return(meta, nil)
-	mockStorage.On("RemoveArtifact", id).Return(nil)
+	mockStorage.On("GetArtifactMeta", artifactID).Return(meta, nil)
+	mockStorage.On("RemoveArtifact", artifactID).Return(nil)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	thr, err := trasher.NewTrasher(
+	trasher, err := trash.NewTrasher(
 		logger,
 		config.TrasherConfig{
 			CollectorIterationsDelay: 1,
@@ -61,10 +67,10 @@ func TestTrasherCollectAndRemove(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	thr.Start(mockStorage, tmpRoot)
+	trasher.Start(mockStorage, tmpRoot)
 	time.Sleep(3 * time.Second)
-	thr.Stop()
+	trasher.Stop()
 
-	mockStorage.AssertCalled(t, "GetArtifactMeta", id)
-	mockStorage.AssertCalled(t, "RemoveArtifact", id)
+	mockStorage.AssertCalled(t, "GetArtifactMeta", artifactID)
+	mockStorage.AssertCalled(t, "RemoveArtifact", artifactID)
 }

@@ -1,6 +1,7 @@
 package config
 
 type Config struct {
+	RootDir string        `yaml:"root_dir"`
 	Trasher TrasherConfig `yaml:"trasher"`
 }
 

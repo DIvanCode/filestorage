@@ -1,4 +1,4 @@
-package artifact
+package id
 
 import (
 	"encoding/hex"
@@ -28,7 +28,7 @@ func (id *ID) String() string {
 func (id *ID) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
-		return fmt.Errorf("artifact.ID should be a string, got %s", data)
+		return fmt.Errorf("id should be a string, got %s", data)
 	}
 	return id.FromString(s)
 }

@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/DIvanCode/filestorage/internal/api/tarstream"
-	"github.com/DIvanCode/filestorage/pkg/artifact"
+	"github.com/DIvanCode/filestorage/pkg/artifact/id"
 	"io"
 	"net/http"
 )
@@ -20,11 +20,7 @@ func NewClient(endpoint string) *Client {
 	}
 }
 
-func (c *Client) Download(
-	ctx context.Context,
-	artifactID artifact.ID,
-	path string,
-) error {
+func (c *Client) Download(ctx context.Context, artifactID id.ID, path string) error {
 	httpReq, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,

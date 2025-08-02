@@ -2,14 +2,16 @@ package storage
 
 import (
 	"context"
-	"github.com/DIvanCode/filestorage/pkg/artifact"
-	. "github.com/DIvanCode/filestorage/pkg/config"
-	. "github.com/DIvanCode/filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	"github.com/DIvanCode/filestorage/pkg/config"
+	errs "github.com/DIvanCode/filestorage/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -29,15 +31,16 @@ func newTestStorage(t *testing.T) *testStorage {
 	require.NoError(t, err)
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	cfg := Config{
-		Trasher: TrasherConfig{
+	cfg := config.Config{
+		RootDir: tmpDir,
+		Trasher: config.TrasherConfig{
 			Workers:                  1,
 			CollectorIterationsDelay: 60,
 			WorkerIterationsDelay:    60,
 		},
 	}
 
-	storage, err := NewStorage(log, tmpDir, cfg)
+	storage, err := NewStorage(log, cfg)
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
 	}
@@ -48,13 +51,18 @@ func newTestStorage(t *testing.T) *testStorage {
 	return s
 }
 
-func newArtifactID(t *testing.T, id string) artifact.ID {
-	var artifactID artifact.ID
-	require.NoError(t, artifactID.FromString(id))
+func newArtifactID(t *testing.T, idNum int) id.ID {
+	idStr := strconv.Itoa(idNum)
+	for len(idStr) < 20 {
+		idStr = "0" + idStr
+	}
+
+	var artifactID id.ID
+	require.NoError(t, artifactID.FromString(idStr))
 	return artifactID
 }
 
-func createArtifact(t *testing.T, s *testStorage, id artifact.ID, trashTime time.Time) {
+func createArtifact(t *testing.T, s *testStorage, id id.ID, trashTime time.Time) {
 	_, commit, _, err := s.CreateArtifact(id, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
@@ -63,78 +71,78 @@ func createArtifact(t *testing.T, s *testStorage, id artifact.ID, trashTime time
 func Test_GetArtifact_NotFound(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
+	artifactID := newArtifactID(t, 1)
 
-	path, unlock, err := s.GetArtifact(id)
-	require.ErrorIs(t, err, ErrNotFound)
-	require.NotNil(t, path)
-	require.Nil(t, unlock)
+	path, unlock, err := s.GetArtifact(artifactID)
+	require.ErrorIs(t, err, errs.ErrNotFound)
+	assert.NotNil(t, path)
+	assert.Nil(t, unlock)
 }
 
 func Test_GetArtifact_ParallelRead(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
+	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	createArtifact(t, s, id, trashTime)
+	createArtifact(t, s, artifactID, trashTime)
 
-	path, unlock1, err := s.GetArtifact(id)
+	path, unlock1, err := s.GetArtifact(artifactID)
 	require.NoError(t, err)
-	require.NotNil(t, path)
-	require.NotNil(t, unlock1)
+	assert.NotNil(t, path)
+	assert.NotNil(t, unlock1)
 	defer unlock1()
 
-	path, unlock2, err := s.GetArtifact(id)
+	path, unlock2, err := s.GetArtifact(artifactID)
 	require.NoError(t, err)
-	require.NotNil(t, path)
-	require.NotNil(t, unlock2)
+	assert.NotNil(t, path)
+	assert.NotNil(t, unlock2)
 	defer unlock2()
 }
 
 func Test_GetArtifact_WriteLock(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
+	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := s.CreateArtifact(id, trashTime)
+	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
 	require.NoError(t, err)
 
-	path, unlock, err := s.GetArtifact(id)
-	require.ErrorIs(t, err, ErrWriteLocked)
-	require.NotNil(t, path)
-	require.Nil(t, unlock)
+	path, unlock, err := s.GetArtifact(artifactID)
+	require.ErrorIs(t, err, errs.ErrWriteLocked)
+	assert.NotNil(t, path)
+	assert.Nil(t, unlock)
 
-	_, _, _, err = s.CreateArtifact(id, trashTime)
-	require.ErrorIs(t, err, ErrWriteLocked)
+	_, _, _, err = s.CreateArtifact(artifactID, trashTime)
+	require.ErrorIs(t, err, errs.ErrWriteLocked)
 
 	require.NoError(t, commit())
 
-	path, unlock, err = s.GetArtifact(id)
+	path, unlock, err = s.GetArtifact(artifactID)
 	require.NoError(t, err)
-	require.NotNil(t, path)
-	require.NotNil(t, unlock)
+	assert.NotNil(t, path)
+	assert.NotNil(t, unlock)
 	defer unlock()
 }
 
 func Test_CreateArtifact_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
+	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	createArtifact(t, s, id, trashTime)
+	createArtifact(t, s, artifactID, trashTime)
 
-	_, _, _, err := s.CreateArtifact(id, trashTime)
-	require.ErrorIs(t, err, ErrAlreadyExists)
+	_, _, _, err := s.CreateArtifact(artifactID, trashTime)
+	require.ErrorIs(t, err, errs.ErrAlreadyExists)
 }
 
 func Test_CreateArtifact_CreateFile(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
+	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := s.CreateArtifact(id, trashTime)
+	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -143,7 +151,7 @@ func Test_CreateArtifact_CreateFile(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	path, unlock, err := s.GetArtifact(id)
+	path, unlock, err := s.GetArtifact(artifactID)
 	defer unlock()
 
 	_, err = os.Stat(filepath.Join(path, "a.txt"))
@@ -153,23 +161,23 @@ func Test_CreateArtifact_CreateFile(t *testing.T) {
 func Test_RemoveArtifact_NotExisting(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
-	err := s.RemoveArtifact(id)
+	artifactID := newArtifactID(t, 1)
+	err := s.RemoveArtifact(artifactID)
 	require.NoError(t, err)
 }
 
 func Test_RemoveArtifact_Removed(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
+	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	createArtifact(t, s, id, trashTime)
+	createArtifact(t, s, artifactID, trashTime)
 
-	path, unlock, err := s.GetArtifact(id)
+	path, unlock, err := s.GetArtifact(artifactID)
 	require.NoError(t, err)
 	unlock()
 
-	err = s.RemoveArtifact(id)
+	err = s.RemoveArtifact(artifactID)
 	require.NoError(t, err)
 
 	_, err = os.Stat(path)
@@ -179,15 +187,15 @@ func Test_RemoveArtifact_Removed(t *testing.T) {
 func Test_CreateArtifact_Abort(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
+	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	path, _, abort, err := s.CreateArtifact(id, trashTime)
+	path, _, abort, err := s.CreateArtifact(artifactID, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, abort())
 
-	_, _, err = s.GetArtifact(id)
-	require.ErrorIs(t, err, ErrNotFound)
+	_, _, err = s.GetArtifact(artifactID)
+	require.ErrorIs(t, err, errs.ErrNotFound)
 
 	_, err = os.Stat(path)
 	require.ErrorIs(t, err, os.ErrNotExist)
@@ -196,33 +204,33 @@ func Test_CreateArtifact_Abort(t *testing.T) {
 func Test_GetArtifactMeta(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
+	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	_, commit, _, err := s.CreateArtifact(id, trashTime)
+	_, commit, _, err := s.CreateArtifact(artifactID, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
-	meta, err := s.GetArtifactMeta(id)
+	meta, err := s.GetArtifactMeta(artifactID)
 	require.NoError(t, err)
-	require.NotNil(t, meta)
-	require.Equal(t, id, meta.ID)
-	require.True(t, trashTime.Equal(meta.TrashTime))
+	assert.NotNil(t, meta)
+	assert.Equal(t, artifactID, meta.ID)
+	assert.True(t, trashTime.Equal(meta.TrashTime))
 
-	_, _, err = s.GetArtifact(id)
+	_, _, err = s.GetArtifact(artifactID)
 	require.NoError(t, err)
 }
 
 func Test_DownloadArtifact_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
-	id := newArtifactID(t, "00000000000000000001")
+	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	_, commit, _, err := s.CreateArtifact(id, trashTime)
+	_, commit, _, err := s.CreateArtifact(artifactID, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
-	err = s.DownloadArtifact(context.Background(), "some-endpoint", id, trashTime)
+	err = s.DownloadArtifact(context.Background(), "some-endpoint", artifactID, trashTime)
 	require.NoError(t, err)
 }

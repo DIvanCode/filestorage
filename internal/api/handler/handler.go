@@ -3,18 +3,21 @@ package handler
 import (
 	"errors"
 	"github.com/DIvanCode/filestorage/internal/api/tarstream"
-	. "github.com/DIvanCode/filestorage/internal/storage"
-	"github.com/DIvanCode/filestorage/pkg/artifact"
-	. "github.com/DIvanCode/filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	errs "github.com/DIvanCode/filestorage/pkg/errors"
 	"github.com/go-chi/chi/v5"
 	"net/http"
 )
 
 type Handler struct {
-	storage *Storage
+	storage FileStorage
 }
 
-func NewHandler(storage *Storage) *Handler {
+type FileStorage interface {
+	GetArtifact(artifactID id.ID) (path string, unlock func(), err error)
+}
+
+func NewHandler(storage FileStorage) *Handler {
 	return &Handler{
 		storage: storage,
 	}
@@ -32,7 +35,7 @@ func (h *Handler) handleDownloadArtifact(w http.ResponseWriter, r *http.Request)
 
 	query := r.URL.Query()
 
-	var artifactID artifact.ID
+	var artifactID id.ID
 	if err := artifactID.FromString(query.Get("id")); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -40,7 +43,7 @@ func (h *Handler) handleDownloadArtifact(w http.ResponseWriter, r *http.Request)
 
 	path, unlock, err := h.storage.GetArtifact(artifactID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, errs.ErrNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
