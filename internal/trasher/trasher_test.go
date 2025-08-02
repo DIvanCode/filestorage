@@ -1,9 +1,10 @@
 package trasher_test
 
 import (
-	"filestorage/internal/artifact"
-	"filestorage/internal/trasher"
-	"filestorage/pkg/config"
+	"github.com/DIvanCode/filestorage/internal/models"
+	"github.com/DIvanCode/filestorage/internal/trasher"
+	"github.com/DIvanCode/filestorage/pkg/artifact"
+	"github.com/DIvanCode/filestorage/pkg/config"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -24,9 +25,9 @@ type MockStorage struct {
 	mock.Mock
 }
 
-func (m *MockStorage) GetArtifactMeta(id artifact.ID) (artifact.Meta, error) {
+func (m *MockStorage) GetArtifactMeta(id artifact.ID) (models.Meta, error) {
 	args := m.Called(id)
-	return args.Get(0).(artifact.Meta), args.Error(1)
+	return args.Get(0).(models.Meta), args.Error(1)
 }
 
 func (m *MockStorage) RemoveArtifact(id artifact.ID) error {
@@ -42,7 +43,7 @@ func TestTrasherCollectAndRemove(t *testing.T) {
 	id := newArtifactID(t, "00000000000000000001")
 	require.NoError(t, os.Mkdir(filepath.Join(shardDir, id.String()), 0777))
 
-	meta := artifact.Meta{ID: id, TrashTime: time.Now().Add(-time.Hour)}
+	meta := models.Meta{ID: id, TrashTime: time.Now().Add(-time.Hour)}
 
 	mockStorage := new(MockStorage)
 	mockStorage.On("GetArtifactMeta", id).Return(meta, nil)

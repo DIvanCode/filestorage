@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"filestorage/internal/api/tarstream"
-	"filestorage/internal/artifact"
+	"github.com/DIvanCode/filestorage/internal/api/tarstream"
+	"github.com/DIvanCode/filestorage/pkg/artifact"
 	"io"
 	"net/http"
 )

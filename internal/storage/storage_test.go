@@ -2,9 +2,9 @@ package storage
 
 import (
 	"context"
-	"filestorage/internal/artifact"
-	. "filestorage/pkg/config"
-	. "filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/pkg/artifact"
+	. "github.com/DIvanCode/filestorage/pkg/config"
+	. "github.com/DIvanCode/filestorage/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"io"
 	"log/slog"

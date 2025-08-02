@@ -2,9 +2,10 @@ package filestorage
 
 import (
 	"context"
-	"filestorage/internal/artifact"
-	"filestorage/pkg/config"
-	. "filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/pkg/artifact"
+	"github.com/DIvanCode/filestorage/pkg/config"
+	. "github.com/DIvanCode/filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/pkg/filestorage"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -18,7 +19,7 @@ import (
 )
 
 type testStorage struct {
-	FileStorage
+	filestorage.FileStorage
 	tmpDir string
 	srv    *http.Server
 }
@@ -54,7 +55,7 @@ func newTestStorage(t *testing.T, rootDir, endpoint string) *testStorage {
 		Handler: mux,
 	}
 
-	storage, err := New(log, tmpDir, mux, cfg)
+	storage, err := filestorage.New(log, tmpDir, mux, cfg)
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
 	}

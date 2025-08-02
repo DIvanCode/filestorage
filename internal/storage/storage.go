@@ -5,11 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"filestorage/internal/api/client"
-	"filestorage/internal/artifact"
-	trasher2 "filestorage/internal/trasher"
-	. "filestorage/pkg/config"
-	. "filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/internal/api/client"
+	"github.com/DIvanCode/filestorage/internal/models"
+	"github.com/DIvanCode/filestorage/internal/trasher"
+	"github.com/DIvanCode/filestorage/pkg/artifact"
+	. "github.com/DIvanCode/filestorage/pkg/config"
+	. "github.com/DIvanCode/filestorage/pkg/errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ type Storage struct {
 	rootDir string
 	tmpDir  string
 
-	trasher *trasher2.Trasher
+	trasher *trasher.Trasher
 
 	mu          sync.Mutex
 	writeLocked map[artifact.ID]struct{}
@@ -44,7 +45,7 @@ func NewStorage(log *slog.Logger, root string, cfg Config) (*Storage, error) {
 		return nil, err
 	}
 
-	thr, err := trasher2.NewTrasher(log, cfg.Trasher)
+	thr, err := trasher.NewTrasher(log, cfg.Trasher)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +120,7 @@ func (s *Storage) CreateArtifact(
 			return err
 		}
 
-		meta := artifact.Meta{
+		meta := models.Meta{
 			ID:        artifactID,
 			TrashTime: trashTime,
 		}
@@ -198,7 +199,7 @@ func (s *Storage) DownloadArtifact(
 }
 
 // GetArtifactMeta Возвращает метаинформацию об артефакте
-func (s *Storage) GetArtifactMeta(artifactID artifact.ID) (meta artifact.Meta, err error) {
+func (s *Storage) GetArtifactMeta(artifactID artifact.ID) (meta models.Meta, err error) {
 	if err = s.readLock(artifactID); err != nil {
 		return
 	}

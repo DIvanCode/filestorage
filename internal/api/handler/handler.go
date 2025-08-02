@@ -2,10 +2,10 @@ package handler
 
 import (
 	"errors"
-	"filestorage/internal/api/tarstream"
-	"filestorage/internal/artifact"
-	. "filestorage/internal/storage"
-	. "filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/internal/api/tarstream"
+	. "github.com/DIvanCode/filestorage/internal/storage"
+	"github.com/DIvanCode/filestorage/pkg/artifact"
+	. "github.com/DIvanCode/filestorage/pkg/errors"
 	"github.com/go-chi/chi/v5"
 	"net/http"
 )

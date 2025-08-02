@@ -2,10 +2,10 @@ package filestorage
 
 import (
 	"context"
-	"filestorage/internal/api/handler"
-	"filestorage/internal/artifact"
-	"filestorage/internal/storage"
-	"filestorage/pkg/config"
+	"github.com/DIvanCode/filestorage/internal/api/handler"
+	"github.com/DIvanCode/filestorage/internal/storage"
+	"github.com/DIvanCode/filestorage/pkg/artifact"
+	"github.com/DIvanCode/filestorage/pkg/config"
 	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"time"

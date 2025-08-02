@@ -2,9 +2,10 @@ package trasher
 
 import (
 	"context"
-	"filestorage/internal/artifact"
-	"filestorage/pkg/config"
 	"fmt"
+	"github.com/DIvanCode/filestorage/internal/models"
+	"github.com/DIvanCode/filestorage/pkg/artifact"
+	"github.com/DIvanCode/filestorage/pkg/config"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ type Trasher struct {
 }
 
 type TrashableStorage interface {
-	GetArtifactMeta(artifactID artifact.ID) (artifact.Meta, error)
+	GetArtifactMeta(artifactID artifact.ID) (models.Meta, error)
 	RemoveArtifact(artifactID artifact.ID) error
 }
 
