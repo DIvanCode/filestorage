@@ -1,8 +1,9 @@
 package trasher_test
 
 import (
+	"github.com/DIvanCode/filestorage/internal/models"
 	"github.com/DIvanCode/filestorage/internal/trasher"
-	artifact "github.com/DIvanCode/filestorage/pkg/artifact"
+	"github.com/DIvanCode/filestorage/pkg/artifact"
 	"github.com/DIvanCode/filestorage/pkg/config"
 	"log/slog"
 	"os"

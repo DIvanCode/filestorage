@@ -3,12 +3,13 @@ package artifact
 import (
 	"encoding/hex"
 	"fmt"
+	"strings"
 )
 
-type ID [20]byte
+type ID [10]byte
 
 func (id *ID) FromString(s string) error {
-	if len(s) != 40 {
+	if len(s) != 20 {
 		return fmt.Errorf("invalid string length")
 	}
 	bytes, err := hex.DecodeString(s)
@@ -20,5 +21,5 @@ func (id *ID) FromString(s string) error {
 }
 
 func (id *ID) String() string {
-	return fmt.Sprintf("%X", id[:])
+	return strings.ToUpper(hex.EncodeToString(id[:]))
 }
