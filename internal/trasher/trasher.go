@@ -3,8 +3,8 @@ package trasher
 import (
 	"context"
 	"fmt"
-	"github.com/DIvanCode/filestorage/internal/models"
-	"github.com/DIvanCode/filestorage/pkg/artifact"
+	"github.com/DIvanCode/filestorage/internal/artifact"
+	"github.com/DIvanCode/filestorage/pkg/artifact/id"
 	"github.com/DIvanCode/filestorage/pkg/config"
 	"log/slog"
 	"os"
@@ -23,9 +23,9 @@ type Trasher struct {
 	log *slog.Logger
 }
 
-type TrashableStorage interface {
-	GetArtifactMeta(artifactID artifact.ID) (models.Meta, error)
-	RemoveArtifact(artifactID artifact.ID) error
+type FileStorage interface {
+	GetArtifactMeta(artifactID id.ID) (artifact.Meta, error)
+	RemoveArtifact(artifactID id.ID) error
 }
 
 func NewTrasher(log *slog.Logger, cfg config.TrasherConfig) (*Trasher, error) {
@@ -40,7 +40,7 @@ func NewTrasher(log *slog.Logger, cfg config.TrasherConfig) (*Trasher, error) {
 	return trasher, nil
 }
 
-func (t *Trasher) Start(storage TrashableStorage, rootDir string) {
+func (t *Trasher) Start(storage FileStorage, rootDir string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.cancelFunc = cancel
 
@@ -54,7 +54,7 @@ func (t *Trasher) Stop() {
 	t.cancelFunc()
 }
 
-func (t *Trasher) startCollector(ctx context.Context, storage TrashableStorage, rootDir string) {
+func (t *Trasher) startCollector(ctx context.Context, storage FileStorage, rootDir string) {
 	go func() {
 		for {
 			delay := time.NewTicker(time.Duration(t.cfg.CollectorIterationsDelay) * time.Second)
@@ -73,7 +73,7 @@ func (t *Trasher) startCollector(ctx context.Context, storage TrashableStorage, 
 	}()
 }
 
-func (t *Trasher) collect(ctx context.Context, storage TrashableStorage, rootDir string) error {
+func (t *Trasher) collect(ctx context.Context, storage FileStorage, rootDir string) error {
 	shards, err := os.ReadDir(rootDir)
 	if err != nil {
 		return err
@@ -97,7 +97,7 @@ func (t *Trasher) collect(ctx context.Context, storage TrashableStorage, rootDir
 	return nil
 }
 
-func (t *Trasher) collectShard(ctx context.Context, storage TrashableStorage, shardDir string) error {
+func (t *Trasher) collectShard(ctx context.Context, storage FileStorage, shardDir string) error {
 	artifacts, err := os.ReadDir(shardDir)
 	if err != nil {
 		return fmt.Errorf("error reading shard %s: %v", shardDir, err)
@@ -118,8 +118,8 @@ func (t *Trasher) collectShard(ctx context.Context, storage TrashableStorage, sh
 	return nil
 }
 
-func (t *Trasher) collectArtifact(storage TrashableStorage, artifactDir string) error {
-	var artifactID artifact.ID
+func (t *Trasher) collectArtifact(storage FileStorage, artifactDir string) error {
+	var artifactID id.ID
 	if err := artifactID.FromString(artifactDir); err != nil {
 		return fmt.Errorf("error reading artifact dir %s: %v", artifactDir, err)
 	}
@@ -138,7 +138,7 @@ func (t *Trasher) collectArtifact(storage TrashableStorage, artifactDir string) 
 	return nil
 }
 
-func (t *Trasher) startWorker(ctx context.Context, storage TrashableStorage) {
+func (t *Trasher) startWorker(ctx context.Context, storage FileStorage) {
 	go func() {
 		for {
 			delay := time.NewTicker(time.Duration(t.cfg.WorkerIterationsDelay) * time.Second)
@@ -164,7 +164,7 @@ func (t *Trasher) startWorker(ctx context.Context, storage TrashableStorage) {
 }
 
 type node struct {
-	artifactID artifact.ID
+	artifactID id.ID
 	next       *node
 }
 
@@ -174,7 +174,7 @@ type queue struct {
 	tail *node
 }
 
-func (q *queue) enqueue(artifactID artifact.ID) {
+func (q *queue) enqueue(artifactID id.ID) {
 	node := &node{artifactID: artifactID, next: nil}
 
 	q.mu.Lock()
@@ -189,7 +189,7 @@ func (q *queue) enqueue(artifactID artifact.ID) {
 	}
 }
 
-func (q *queue) dequeue() *artifact.ID {
+func (q *queue) dequeue() *id.ID {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -197,7 +197,7 @@ func (q *queue) dequeue() *artifact.ID {
 		return nil
 	}
 
-	id := q.head.artifactID
+	artifactID := q.head.artifactID
 	q.head = q.head.next
-	return &id
+	return &artifactID
 }

@@ -1,7 +1,8 @@
-package artfact
+package id
 
 import (
-	"github.com/DIvanCode/filestorage/pkg/artifact"
+	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -17,10 +18,12 @@ func TestIDFromStringOK(t *testing.T) {
 		{id: "FFFFFFFFFFFFFFFFFFFF"},
 		{id: "A09568817359813EABCD"},
 	} {
-		var artifactID artifact.ID
-		err := artifactID.FromString(input.id)
-		require.NoError(t, err)
-		require.Equal(t, input.id, artifactID.String())
+		t.Run(input.id, func(t *testing.T) {
+			var artifactID id.ID
+			err := artifactID.FromString(input.id)
+			require.NoError(t, err)
+			assert.Equal(t, input.id, artifactID.String())
+		})
 	}
 }
 
@@ -32,8 +35,10 @@ func TestIDFromStringError(t *testing.T) {
 		{id: "A09568817359813EAB"},
 		{id: ""},
 	} {
-		var artifactID artifact.ID
-		err := artifactID.FromString(input.id)
-		require.Error(t, err)
+		t.Run(input.id, func(t *testing.T) {
+			var artifactID id.ID
+			err := artifactID.FromString(input.id)
+			require.Error(t, err)
+		})
 	}
 }

@@ -6,15 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/DIvanCode/filestorage/internal/api/client"
-	"github.com/DIvanCode/filestorage/internal/models"
-	"github.com/DIvanCode/filestorage/internal/trasher"
-	"github.com/DIvanCode/filestorage/pkg/artifact"
-	. "github.com/DIvanCode/filestorage/pkg/config"
-	. "github.com/DIvanCode/filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/internal/artifact"
+	lock "github.com/DIvanCode/filestorage/internal/locker"
+	trash "github.com/DIvanCode/filestorage/internal/trasher"
+	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	"github.com/DIvanCode/filestorage/pkg/config"
+	errs "github.com/DIvanCode/filestorage/pkg/errors"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 )
 
@@ -22,17 +22,14 @@ type Storage struct {
 	rootDir string
 	tmpDir  string
 
-	trasher *trasher.Trasher
-
-	mu          sync.Mutex
-	writeLocked map[artifact.ID]struct{}
-	readLocked  map[artifact.ID]int
+	trasher *trash.Trasher
+	locker  *lock.Locker
 
 	log *slog.Logger
 }
 
-func NewStorage(log *slog.Logger, root string, cfg Config) (*Storage, error) {
-	tmpDir := filepath.Join(root, "tmp")
+func NewStorage(log *slog.Logger, cfg config.Config) (*Storage, error) {
+	tmpDir := filepath.Join(cfg.RootDir, "tmp")
 	if err := os.RemoveAll(tmpDir); err != nil {
 		return nil, err
 	}
@@ -40,24 +37,24 @@ func NewStorage(log *slog.Logger, root string, cfg Config) (*Storage, error) {
 		return nil, err
 	}
 
-	rootDir := filepath.Join(root, "storage")
+	rootDir := filepath.Join(cfg.RootDir, "storage")
 	if err := os.MkdirAll(rootDir, 0777); err != nil {
 		return nil, err
 	}
 
-	thr, err := trasher.NewTrasher(log, cfg.Trasher)
+	trasher, err := trash.NewTrasher(log, cfg.Trasher)
 	if err != nil {
 		return nil, err
 	}
+
+	locker := lock.NewLocker()
 
 	storage := &Storage{
 		rootDir: rootDir,
 		tmpDir:  tmpDir,
 
-		trasher: thr,
-
-		writeLocked: make(map[artifact.ID]struct{}),
-		readLocked:  make(map[artifact.ID]int),
+		trasher: trasher,
+		locker:  locker,
 
 		log: log,
 	}
@@ -69,7 +66,7 @@ func NewStorage(log *slog.Logger, root string, cfg Config) (*Storage, error) {
 		}
 	}
 
-	thr.Start(storage, storage.rootDir)
+	trasher.Start(storage, storage.rootDir)
 
 	return storage, nil
 }
@@ -80,23 +77,23 @@ func (s *Storage) Shutdown() {
 
 // GetArtifact Возвращает абсолютный путь артефакта
 // Артефакт блокируется в режиме на чтение. Для разблокировки необходимо вызвать unlock()
-func (s *Storage) GetArtifact(artifactID artifact.ID) (path string, unlock func(), err error) {
-	if err = s.readLock(artifactID); err != nil {
+func (s *Storage) GetArtifact(artifactID id.ID) (path string, unlock func(), err error) {
+	if err = s.locker.ReadLock(artifactID); err != nil {
 		return
 	}
 
 	path = s.getAbsPath(artifactID)
 	if _, err = os.Stat(path); err != nil {
-		s.readUnlock(artifactID)
+		s.locker.ReadUnlock(artifactID)
 
 		if os.IsNotExist(err) {
-			err = ErrNotFound
+			err = errs.ErrNotFound
 		}
 		return
 	}
 
 	unlock = func() {
-		s.readUnlock(artifactID)
+		s.locker.ReadUnlock(artifactID)
 	}
 
 	return
@@ -107,10 +104,15 @@ func (s *Storage) GetArtifact(artifactID artifact.ID) (path string, unlock func(
 // При вызове функции commit() он перемещается в storage
 // При вызове функции abort() он удаляется
 func (s *Storage) CreateArtifact(
-	artifactID artifact.ID,
+	artifactID id.ID,
 	trashTime time.Time,
 ) (path string, commit, abort func() error, err error) {
-	if err = s.writeLock(artifactID, true); err != nil {
+	if err = s.locker.WriteLock(artifactID); err != nil {
+		return
+	}
+
+	if s.existsArtifact(artifactID) {
+		err = errs.ErrAlreadyExists
 		return
 	}
 
@@ -120,7 +122,7 @@ func (s *Storage) CreateArtifact(
 			return err
 		}
 
-		meta := models.Meta{
+		meta := artifact.Meta{
 			ID:        artifactID,
 			TrashTime: trashTime,
 		}
@@ -145,12 +147,12 @@ func (s *Storage) CreateArtifact(
 	}
 
 	abort = func() error {
-		defer s.writeUnlock(artifactID)
+		defer s.locker.WriteUnlock(artifactID)
 		return os.RemoveAll(path)
 	}
 
 	commit = func() error {
-		defer s.writeUnlock(artifactID)
+		defer s.locker.WriteUnlock(artifactID)
 		return os.Rename(path, s.getAbsPath(artifactID))
 	}
 
@@ -166,11 +168,11 @@ func (s *Storage) CreateArtifact(
 func (s *Storage) DownloadArtifact(
 	ctx context.Context,
 	endpoint string,
-	artifactID artifact.ID,
+	artifactID id.ID,
 	trashTime time.Time,
 ) error {
 	_, unlock, err := s.GetArtifact(artifactID)
-	if err != nil && !errors.Is(err, ErrNotFound) {
+	if err != nil && !errors.Is(err, errs.ErrNotFound) {
 		return err
 	}
 
@@ -199,18 +201,18 @@ func (s *Storage) DownloadArtifact(
 }
 
 // GetArtifactMeta Возвращает метаинформацию об артефакте
-func (s *Storage) GetArtifactMeta(artifactID artifact.ID) (meta models.Meta, err error) {
-	if err = s.readLock(artifactID); err != nil {
+func (s *Storage) GetArtifactMeta(artifactID id.ID) (meta artifact.Meta, err error) {
+	if err = s.locker.ReadLock(artifactID); err != nil {
 		return
 	}
-	defer s.readUnlock(artifactID)
+	defer s.locker.ReadUnlock(artifactID)
 
 	path := s.getAbsPath(artifactID)
 	if _, err = os.Stat(path); err != nil {
-		s.readUnlock(artifactID)
+		s.locker.ReadUnlock(artifactID)
 
 		if os.IsNotExist(err) {
-			err = ErrNotFound
+			err = errs.ErrNotFound
 		}
 		return
 	}
@@ -229,11 +231,11 @@ func (s *Storage) GetArtifactMeta(artifactID artifact.ID) (meta models.Meta, err
 }
 
 // RemoveArtifact Удаляет артефакт
-func (s *Storage) RemoveArtifact(artifactID artifact.ID) (err error) {
-	if err = s.writeLock(artifactID, false); err != nil {
+func (s *Storage) RemoveArtifact(artifactID id.ID) (err error) {
+	if err = s.locker.WriteLock(artifactID); err != nil {
 		return
 	}
-	defer s.writeUnlock(artifactID)
+	defer s.locker.WriteUnlock(artifactID)
 
 	err = os.RemoveAll(s.getAbsPath(artifactID))
 	if err != nil {
@@ -243,57 +245,12 @@ func (s *Storage) RemoveArtifact(artifactID artifact.ID) (err error) {
 	return
 }
 
-func (s *Storage) getAbsPath(artifactID artifact.ID) string {
+func (s *Storage) getAbsPath(artifactID id.ID) string {
 	return filepath.Join(s.rootDir, artifactID.String()[:2], artifactID.String()[:])
 }
 
-func (s *Storage) readLock(artifactID artifact.ID) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, ok := s.writeLocked[artifactID]; ok {
-		return ErrWriteLocked
-	}
-
-	s.readLocked[artifactID]++
-	return nil
-}
-
-func (s *Storage) readUnlock(artifactID artifact.ID) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.readLocked[artifactID]--
-	if s.readLocked[artifactID] == 0 {
-		delete(s.readLocked, artifactID)
-	}
-}
-
-func (s *Storage) writeLock(artifactID artifact.ID, create bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	_, err := os.Stat(s.getAbsPath(artifactID))
-	if !os.IsNotExist(err) && err != nil {
-		return err
-	} else if err == nil && create {
-		return ErrAlreadyExists
-	}
-
-	if _, ok := s.writeLocked[artifactID]; ok {
-		return ErrWriteLocked
-	}
-	if s.readLocked[artifactID] > 0 {
-		return ErrReadLocked
-	}
-
-	s.writeLocked[artifactID] = struct{}{}
-	return nil
-}
-
-func (s *Storage) writeUnlock(artifactID artifact.ID) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.writeLocked, artifactID)
+func (s *Storage) existsArtifact(artifactID id.ID) bool {
+	path := s.getAbsPath(artifactID)
+	_, err := os.Stat(path)
+	return err == nil
 }
