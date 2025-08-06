@@ -158,6 +158,68 @@ func Test_CreateArtifact_CreateFile(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func Test_CreateFile(t *testing.T) {
+	s := newTestStorage(t)
+
+	artifactID := newArtifactID(t, 1)
+	trashTime := time.Now().Add(time.Minute)
+
+	_, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	require.NoError(t, err)
+	require.NoError(t, commit())
+
+	path, commit, _, err := s.CreateFile(artifactID, "a.txt")
+	require.NoError(t, err)
+
+	f, err := os.Create(filepath.Join(path, "a.txt"))
+	require.NoError(t, err)
+
+	_, err = f.WriteString("aaa")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	require.NoError(t, commit())
+
+	path, unlock, err := s.GetArtifact(artifactID)
+	require.NoError(t, err)
+	defer unlock()
+
+	_, err = os.Stat(filepath.Join(path, "a.txt"))
+	require.NoError(t, err)
+
+	bytes, err := os.ReadFile(filepath.Join(path, "a.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "aaa", string(bytes))
+}
+
+func Test_CreateFile_AlreadyExists(t *testing.T) {
+	s := newTestStorage(t)
+
+	artifactID := newArtifactID(t, 1)
+	trashTime := time.Now().Add(time.Minute)
+
+	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	require.NoError(t, err)
+
+	f, err := os.Create(filepath.Join(path, "a.txt"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	require.NoError(t, commit())
+
+	_, _, _, err = s.CreateFile(artifactID, "a.txt")
+	require.ErrorIs(t, err, errs.ErrAlreadyExists)
+}
+
+func Test_CreateFile_ArtifactNotExists(t *testing.T) {
+	s := newTestStorage(t)
+
+	artifactID := newArtifactID(t, 1)
+
+	_, _, _, err := s.CreateFile(artifactID, "a.txt")
+	require.ErrorIs(t, err, errs.ErrNotFound)
+}
+
 func Test_RemoveArtifact_NotExisting(t *testing.T) {
 	s := newTestStorage(t)
 
@@ -250,6 +312,6 @@ func Test_DownloadFile_AlreadyExists(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	err = s.DownloadFile(context.Background(), "some-endpoint", artifactID, "a.txt", trashTime)
+	err = s.DownloadFile(context.Background(), "some-endpoint", artifactID, "a.txt")
 	require.NoError(t, err)
 }

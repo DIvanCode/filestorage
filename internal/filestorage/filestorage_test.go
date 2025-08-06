@@ -148,7 +148,7 @@ func Test_ArtifactExists_TransferFile(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt", trashTime)
+	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt")
 	require.NoError(t, err)
 
 	path, unlock, err := dst.GetArtifact(ID)
@@ -189,9 +189,13 @@ func Test_ArtifactNotExists_TransferFile(t *testing.T) {
 
 	require.NoError(t, commit())
 
+	path, commit, _, err = dst.CreateArtifact(ID, trashTime)
+	require.NoError(t, err)
+	require.NoError(t, commit())
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt", trashTime)
+	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt")
 	require.NoError(t, err)
 
 	path, unlock, err := dst.GetArtifact(ID)
@@ -260,7 +264,7 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 	require.NoError(t, err)
 
 	path, unlock, err := dst.GetArtifact(ID)
-	defer unlock()
+	unlock()
 	require.NoError(t, err)
 	assert.NotNil(t, path)
 	assert.NotNil(t, unlock)

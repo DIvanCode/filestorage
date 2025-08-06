@@ -127,13 +127,15 @@ func (s *Storage) CreateArtifact(
 			TrashTime: trashTime,
 		}
 
-		f, err := os.OpenFile(filepath.Join(path, meta.ID.String()[:]+".meta.json"), os.O_CREATE|os.O_WRONLY, 0777)
+		var f *os.File
+		f, err = os.OpenFile(filepath.Join(path, meta.ID.String()[:]+".meta.json"), os.O_CREATE|os.O_WRONLY, 0777)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = f.Close() }()
 
-		bytes, err := json.Marshal(meta)
+		var bytes []byte
+		bytes, err = json.Marshal(meta)
 		if err != nil {
 			return err
 		}
@@ -164,6 +166,59 @@ func (s *Storage) CreateArtifact(
 	return
 }
 
+// CreateFile Создаёт файл file в существующем артефакте artifactID
+// Файл создаётся во временной директории; path - абсолютный путь до временной директории
+// При вызове функции commit() он перемещается в storage
+// При вызове функции abort() он удаляется
+func (s *Storage) CreateFile(artifactID id.ID, file string) (path string, commit, abort func() error, err error) {
+	if err = s.locker.WriteLock(artifactID); err != nil {
+		return
+	}
+
+	if !s.existsArtifact(artifactID) {
+		err = errs.ErrNotFound
+		return
+	}
+
+	if s.existsFile(artifactID, file) {
+		err = errs.ErrAlreadyExists
+		return
+	}
+
+	path = filepath.Join(s.tmpDir, artifactID.String())
+	create := func() error {
+		if err = os.MkdirAll(path, 0777); err != nil {
+			return err
+		}
+
+		var f *os.File
+		f, err = os.Create(filepath.Join(path, file))
+		if err != nil {
+			return err
+		}
+		defer func() { _ = f.Close() }()
+
+		return nil
+	}
+
+	abort = func() error {
+		defer s.locker.WriteUnlock(artifactID)
+		return os.RemoveAll(path)
+	}
+
+	commit = func() error {
+		defer s.locker.WriteUnlock(artifactID)
+		return os.Rename(filepath.Join(path, file), filepath.Join(s.getAbsPath(artifactID), file))
+	}
+
+	if err = create(); err != nil {
+		_ = abort()
+		return
+	}
+
+	return
+}
+
 // DownloadArtifact Скачивает артефакт artifactID с указанного endpoint
 func (s *Storage) DownloadArtifact(
 	ctx context.Context,
@@ -171,17 +226,10 @@ func (s *Storage) DownloadArtifact(
 	artifactID id.ID,
 	trashTime time.Time,
 ) error {
-	_, unlock, err := s.GetArtifact(artifactID)
-	if err != nil && !errors.Is(err, errs.ErrNotFound) {
-		return err
-	}
-
-	if err == nil {
-		unlock()
+	path, commit, abort, err := s.CreateArtifact(artifactID, trashTime)
+	if err != nil && errors.Is(err, errs.ErrAlreadyExists) {
 		return nil
 	}
-
-	path, commit, abort, err := s.CreateArtifact(artifactID, trashTime)
 	if err != nil {
 		return err
 	}
@@ -200,54 +248,32 @@ func (s *Storage) DownloadArtifact(
 	return nil
 }
 
-// DownloadFile Скачивает файл file в артефакте artifactID с указанного endpoint
+// DownloadFile Скачивает файл file в существующем артефакте artifactID с указанного endpoint
 func (s *Storage) DownloadFile(
 	ctx context.Context,
 	endpoint string,
 	artifactID id.ID,
 	file string,
-	trashTime time.Time,
 ) error {
-	if !s.existsArtifact(artifactID) {
-		path, commit, abort, err := s.CreateArtifact(artifactID, trashTime)
-		if err != nil {
-			return err
-		}
-
-		c := client.NewClient(endpoint)
-		if err = c.DownloadFile(ctx, artifactID, path, file); err != nil {
-			_ = abort()
-			return err
-		}
-
-		if err = commit(); err != nil {
-			_ = abort()
-			return err
-		}
+	path, commit, abort, err := s.CreateFile(artifactID, file)
+	if err != nil && errors.Is(err, errs.ErrAlreadyExists) {
 		return nil
 	}
-
-	if err := s.locker.WriteLock(artifactID); err != nil {
-		return err
-	}
-	defer s.locker.WriteUnlock(artifactID)
-
-	if _, err := os.Stat(filepath.Join(s.getAbsPath(artifactID), file)); err == nil {
-		return nil
-	}
-
-	path := filepath.Join(s.tmpDir, artifactID.String())
-	if err := os.MkdirAll(path, 0777); err != nil {
+	if err != nil {
 		return err
 	}
 
 	c := client.NewClient(endpoint)
 	if err := c.DownloadFile(ctx, artifactID, path, file); err != nil {
-		_ = os.RemoveAll(path)
+		_ = abort()
 		return err
 	}
 
-	return os.Rename(filepath.Join(path, file), filepath.Join(s.getAbsPath(artifactID), file))
+	if err = commit(); err != nil {
+		_ = abort()
+		return err
+	}
+	return nil
 }
 
 // GetArtifactMeta Возвращает метаинформацию об артефакте artifactID
@@ -301,6 +327,12 @@ func (s *Storage) getAbsPath(artifactID id.ID) string {
 
 func (s *Storage) existsArtifact(artifactID id.ID) bool {
 	path := s.getAbsPath(artifactID)
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func (s *Storage) existsFile(artifactID id.ID, file string) bool {
+	path := filepath.Join(s.getAbsPath(artifactID), file)
 	_, err := os.Stat(path)
 	return err == nil
 }

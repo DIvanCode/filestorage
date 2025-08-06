@@ -14,8 +14,9 @@ import (
 type FileStorage interface {
 	GetArtifact(artifactID id.ID) (path string, unlock func(), err error)
 	CreateArtifact(artifactID id.ID, trashTime time.Time) (path string, commit, abort func() error, err error)
+	CreateFile(artifactID id.ID, file string) (path string, commit, abort func() error, err error)
 	DownloadArtifact(ctx context.Context, endpoint string, artifactID id.ID, trashTime time.Time) error
-	DownloadFile(ctx context.Context, endpoint string, artifactID id.ID, file string, trashTime time.Time) error
+	DownloadFile(ctx context.Context, endpoint string, artifactID id.ID, file string) error
 	Shutdown()
 }
 
