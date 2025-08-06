@@ -17,6 +17,7 @@ type FileStorage interface {
 	CreateFile(artifactID id.ID, file string) (path string, commit, abort func() error, err error)
 	DownloadArtifact(ctx context.Context, endpoint string, artifactID id.ID, trashTime time.Time) error
 	DownloadFile(ctx context.Context, endpoint string, artifactID id.ID, file string) error
+	DeleteFile(artifactID id.ID, file string) error
 	Shutdown()
 }
 

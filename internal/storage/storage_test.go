@@ -315,3 +315,42 @@ func Test_DownloadFile_AlreadyExists(t *testing.T) {
 	err = s.DownloadFile(context.Background(), "some-endpoint", artifactID, "a.txt")
 	require.NoError(t, err)
 }
+
+func Test_DeleteFile_Deleted(t *testing.T) {
+	s := newTestStorage(t)
+
+	artifactID := newArtifactID(t, 1)
+	trashTime := time.Now().Add(time.Minute)
+	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	require.NoError(t, err)
+
+	f, err := os.Create(filepath.Join(path, "a.txt"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	require.NoError(t, commit())
+
+	err = s.DeleteFile(artifactID, "a.txt")
+	require.NoError(t, err)
+
+	path, unlock, err := s.GetArtifact(artifactID)
+	require.NoError(t, err)
+
+	_, err = os.Stat(filepath.Join(path, "a.txt"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	unlock()
+}
+
+func Test_DeleteFile_NotExists(t *testing.T) {
+	s := newTestStorage(t)
+
+	artifactID := newArtifactID(t, 1)
+	trashTime := time.Now().Add(time.Minute)
+	_, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	require.NoError(t, err)
+	require.NoError(t, commit())
+
+	err = s.DeleteFile(artifactID, "a.txt")
+	require.ErrorIs(t, err, errs.ErrNotFound)
+}

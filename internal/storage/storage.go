@@ -276,6 +276,19 @@ func (s *Storage) DownloadFile(
 	return nil
 }
 
+func (s *Storage) DeleteFile(artifactID id.ID, file string) error {
+	if err := s.locker.WriteLock(artifactID); err != nil {
+		return err
+	}
+	defer s.locker.WriteUnlock(artifactID)
+
+	if !s.existsArtifact(artifactID) || !s.existsFile(artifactID, file) {
+		return errs.ErrNotFound
+	}
+
+	return os.RemoveAll(filepath.Join(s.getAbsPath(artifactID), file))
+}
+
 // GetArtifactMeta Возвращает метаинформацию об артефакте artifactID
 func (s *Storage) GetArtifactMeta(artifactID id.ID) (meta artifact.Meta, err error) {
 	if err = s.locker.ReadLock(artifactID); err != nil {
