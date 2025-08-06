@@ -75,7 +75,7 @@ func (s *Storage) Shutdown() {
 	s.trasher.Stop()
 }
 
-// GetArtifact Возвращает абсолютный путь артефакта
+// GetArtifact Возвращает абсолютный путь артефакта artifactID
 // Артефакт блокируется в режиме на чтение. Для разблокировки необходимо вызвать unlock()
 func (s *Storage) GetArtifact(artifactID id.ID) (path string, unlock func(), err error) {
 	if err = s.locker.ReadLock(artifactID); err != nil {
@@ -99,7 +99,7 @@ func (s *Storage) GetArtifact(artifactID id.ID) (path string, unlock func(), err
 	return
 }
 
-// CreateArtifact Создаёт артефакт с указанным ID
+// CreateArtifact Создаёт артефакт artifactID
 // Артефакт создаётся во временной директории; path - абсолютный путь временной директории
 // При вызове функции commit() он перемещается в storage
 // При вызове функции abort() он удаляется
@@ -164,7 +164,7 @@ func (s *Storage) CreateArtifact(
 	return
 }
 
-// DownloadArtifact Скачивает артефакт ID с указанного endpoint
+// DownloadArtifact Скачивает артефакт artifactID с указанного endpoint
 func (s *Storage) DownloadArtifact(
 	ctx context.Context,
 	endpoint string,
@@ -187,7 +187,7 @@ func (s *Storage) DownloadArtifact(
 	}
 
 	c := client.NewClient(endpoint)
-	if err = c.Download(ctx, artifactID, path); err != nil {
+	if err = c.DownloadArtifact(ctx, artifactID, path); err != nil {
 		_ = abort()
 		return err
 	}
@@ -200,7 +200,57 @@ func (s *Storage) DownloadArtifact(
 	return nil
 }
 
-// GetArtifactMeta Возвращает метаинформацию об артефакте
+// DownloadFile Скачивает файл file в артефакте artifactID с указанного endpoint
+func (s *Storage) DownloadFile(
+	ctx context.Context,
+	endpoint string,
+	artifactID id.ID,
+	file string,
+	trashTime time.Time,
+) error {
+	if !s.existsArtifact(artifactID) {
+		path, commit, abort, err := s.CreateArtifact(artifactID, trashTime)
+		if err != nil {
+			return err
+		}
+
+		c := client.NewClient(endpoint)
+		if err = c.DownloadFile(ctx, artifactID, path, file); err != nil {
+			_ = abort()
+			return err
+		}
+
+		if err = commit(); err != nil {
+			_ = abort()
+			return err
+		}
+		return nil
+	}
+
+	if err := s.locker.WriteLock(artifactID); err != nil {
+		return err
+	}
+	defer s.locker.WriteUnlock(artifactID)
+
+	if _, err := os.Stat(filepath.Join(s.getAbsPath(artifactID), file)); err == nil {
+		return nil
+	}
+
+	path := filepath.Join(s.tmpDir, artifactID.String())
+	if err := os.MkdirAll(path, 0777); err != nil {
+		return err
+	}
+
+	c := client.NewClient(endpoint)
+	if err := c.DownloadFile(ctx, artifactID, path, file); err != nil {
+		_ = os.RemoveAll(path)
+		return err
+	}
+
+	return os.Rename(filepath.Join(path, file), filepath.Join(s.getAbsPath(artifactID), file))
+}
+
+// GetArtifactMeta Возвращает метаинформацию об артефакте artifactID
 func (s *Storage) GetArtifactMeta(artifactID id.ID) (meta artifact.Meta, err error) {
 	if err = s.locker.ReadLock(artifactID); err != nil {
 		return
@@ -230,7 +280,7 @@ func (s *Storage) GetArtifactMeta(artifactID id.ID) (meta artifact.Meta, err err
 	return
 }
 
-// RemoveArtifact Удаляет артефакт
+// RemoveArtifact Удаляет артефакт artifactID
 func (s *Storage) RemoveArtifact(artifactID id.ID) (err error) {
 	if err = s.locker.WriteLock(artifactID); err != nil {
 		return

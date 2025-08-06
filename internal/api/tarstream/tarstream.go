@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Send рекурсивно обходит директорию и сериализует её содержимое в поток w.
@@ -33,6 +34,69 @@ func Send(dir string, w io.Writer) error {
 			})
 
 		default:
+			h := &tar.Header{
+				Typeflag: tar.TypeReg,
+				Name:     rel,
+				Size:     info.Size(),
+				Mode:     int64(info.Mode()),
+			}
+
+			if err := tw.WriteHeader(h); err != nil {
+				return err
+			}
+
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = f.Close() }()
+
+			_, err = io.Copy(tw, f)
+			return err
+		}
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return tw.Close()
+}
+
+// SendFile берём файл вместе с путём и сериализует его содержимое в поток w.
+func SendFile(dir string, file string, w io.Writer) error {
+	tw := tar.NewWriter(w)
+
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+
+		if rel == "." {
+			return nil
+		}
+
+		switch {
+		case info.IsDir():
+			if !strings.HasPrefix(file, rel) {
+				return nil
+			}
+
+			return tw.WriteHeader(&tar.Header{
+				Name:     rel,
+				Typeflag: tar.TypeDir,
+			})
+
+		default:
+			if rel != file {
+				return nil
+			}
+
 			h := &tar.Header{
 				Typeflag: tar.TypeReg,
 				Name:     rel,

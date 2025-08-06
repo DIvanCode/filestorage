@@ -113,6 +113,99 @@ func Test_TransferArtifact(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func Test_ArtifactExists_TransferFile(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	src := newTestStorage(t, "src", "localhost:5252")
+	dst := newTestStorage(t, "dst", "localhost:5253")
+
+	ID := newArtifactID(t, "00000000000000000001")
+	trashTime := time.Now().Add(time.Minute)
+
+	path, commit, _, err := src.CreateArtifact(ID, trashTime)
+	require.NoError(t, err)
+
+	f, err := os.Create(filepath.Join(path, "a.txt"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	f, err = os.Create(filepath.Join(path, "b.txt"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	require.NoError(t, commit())
+
+	path, commit, _, err = dst.CreateArtifact(ID, trashTime)
+	require.NoError(t, err)
+
+	f, err = os.Create(filepath.Join(path, "c.txt"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	require.NoError(t, commit())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt", trashTime)
+	require.NoError(t, err)
+
+	path, unlock, err := dst.GetArtifact(ID)
+	defer unlock()
+	require.NoError(t, err)
+	assert.NotNil(t, path)
+	assert.NotNil(t, unlock)
+
+	_, err = os.Stat(filepath.Join(path, "a.txt"))
+	assert.NoError(t, err)
+	_, err = os.Stat(filepath.Join(path, "b.txt"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(filepath.Join(path, "c.txt"))
+	assert.NoError(t, err)
+}
+
+func Test_ArtifactNotExists_TransferFile(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	src := newTestStorage(t, "src", "localhost:5252")
+	dst := newTestStorage(t, "dst", "localhost:5253")
+
+	ID := newArtifactID(t, "00000000000000000001")
+	trashTime := time.Now().Add(time.Minute)
+
+	path, commit, _, err := src.CreateArtifact(ID, trashTime)
+	require.NoError(t, err)
+
+	f, err := os.Create(filepath.Join(path, "a.txt"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	f, err = os.Create(filepath.Join(path, "b.txt"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	require.NoError(t, commit())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt", trashTime)
+	require.NoError(t, err)
+
+	path, unlock, err := dst.GetArtifact(ID)
+	defer unlock()
+	require.NoError(t, err)
+	assert.NotNil(t, path)
+	assert.NotNil(t, unlock)
+
+	_, err = os.Stat(filepath.Join(path, "a.txt"))
+	assert.NoError(t, err)
+	_, err = os.Stat(filepath.Join(path, "b.txt"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
 func Test_DownloadFailed(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

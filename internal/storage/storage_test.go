@@ -62,7 +62,7 @@ func newArtifactID(t *testing.T, idNum int) id.ID {
 	return artifactID
 }
 
-func createArtifact(t *testing.T, s *testStorage, id id.ID, trashTime time.Time) {
+func CreateArtifact(t *testing.T, s *testStorage, id id.ID, trashTime time.Time) {
 	_, commit, _, err := s.CreateArtifact(id, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
@@ -84,7 +84,7 @@ func Test_GetArtifact_ParallelRead(t *testing.T) {
 
 	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	createArtifact(t, s, artifactID, trashTime)
+	CreateArtifact(t, s, artifactID, trashTime)
 
 	path, unlock1, err := s.GetArtifact(artifactID)
 	require.NoError(t, err)
@@ -130,7 +130,7 @@ func Test_CreateArtifact_AlreadyExists(t *testing.T) {
 
 	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	createArtifact(t, s, artifactID, trashTime)
+	CreateArtifact(t, s, artifactID, trashTime)
 
 	_, _, _, err := s.CreateArtifact(artifactID, trashTime)
 	require.ErrorIs(t, err, errs.ErrAlreadyExists)
@@ -171,7 +171,7 @@ func Test_RemoveArtifact_Removed(t *testing.T) {
 
 	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	createArtifact(t, s, artifactID, trashTime)
+	CreateArtifact(t, s, artifactID, trashTime)
 
 	path, unlock, err := s.GetArtifact(artifactID)
 	require.NoError(t, err)
@@ -232,5 +232,24 @@ func Test_DownloadArtifact_AlreadyExists(t *testing.T) {
 	require.NoError(t, commit())
 
 	err = s.DownloadArtifact(context.Background(), "some-endpoint", artifactID, trashTime)
+	require.NoError(t, err)
+}
+
+func Test_DownloadFile_AlreadyExists(t *testing.T) {
+	s := newTestStorage(t)
+
+	artifactID := newArtifactID(t, 1)
+	trashTime := time.Now().Add(time.Minute)
+
+	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	require.NoError(t, err)
+
+	f, err := os.Create(filepath.Join(path, "a.txt"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	require.NoError(t, commit())
+
+	err = s.DownloadFile(context.Background(), "some-endpoint", artifactID, "a.txt", trashTime)
 	require.NoError(t, err)
 }
