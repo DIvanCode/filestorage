@@ -62,7 +62,7 @@ func newArtifactID(t *testing.T, idNum int) id.ID {
 	return artifactID
 }
 
-func CreateArtifact(t *testing.T, s *testStorage, id id.ID, trashTime time.Time) {
+func createArtifact(t *testing.T, s *testStorage, id id.ID, trashTime time.Time) {
 	_, commit, _, err := s.CreateArtifact(id, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
@@ -84,7 +84,7 @@ func Test_GetArtifact_ParallelRead(t *testing.T) {
 
 	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	CreateArtifact(t, s, artifactID, trashTime)
+	createArtifact(t, s, artifactID, trashTime)
 
 	path, unlock1, err := s.GetArtifact(artifactID)
 	require.NoError(t, err)
@@ -130,7 +130,7 @@ func Test_CreateArtifact_AlreadyExists(t *testing.T) {
 
 	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	CreateArtifact(t, s, artifactID, trashTime)
+	createArtifact(t, s, artifactID, trashTime)
 
 	_, _, _, err := s.CreateArtifact(artifactID, trashTime)
 	require.ErrorIs(t, err, errs.ErrAlreadyExists)
@@ -171,7 +171,7 @@ func Test_RemoveArtifact_Removed(t *testing.T) {
 
 	artifactID := newArtifactID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	CreateArtifact(t, s, artifactID, trashTime)
+	createArtifact(t, s, artifactID, trashTime)
 
 	path, unlock, err := s.GetArtifact(artifactID)
 	require.NoError(t, err)
