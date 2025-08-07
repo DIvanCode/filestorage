@@ -2,9 +2,9 @@ package filestorage
 
 import (
 	"context"
-	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"github.com/DIvanCode/filestorage/pkg/config"
-	errs "github.com/DIvanCode/filestorage/pkg/errors"
+	. "github.com/DIvanCode/filestorage/pkg/errors"
 	"github.com/DIvanCode/filestorage/pkg/filestorage"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -72,13 +72,13 @@ func newTestStorage(t *testing.T, rootDir, endpoint string) *testStorage {
 	return s
 }
 
-func newArtifactID(t *testing.T, idStr string) id.ID {
-	var artifactID id.ID
-	require.NoError(t, artifactID.FromString(idStr))
-	return artifactID
+func newBucketID(t *testing.T, idStr string) bucket.ID {
+	var id bucket.ID
+	require.NoError(t, id.FromString(idStr))
+	return id
 }
 
-func Test_TransferArtifact(t *testing.T) {
+func Test_TransferBucket(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -86,10 +86,10 @@ func Test_TransferArtifact(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newArtifactID(t, "00000000000000000001")
+	ID := newBucketID(t, "00000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := src.CreateArtifact(ID, trashTime)
+	path, commit, _, err := src.CreateBucket(ID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -100,10 +100,10 @@ func Test_TransferArtifact(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadArtifact(ctx, "http://localhost:5252", ID, trashTime)
+	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, trashTime)
 	require.NoError(t, err)
 
-	path, unlock, err := dst.GetArtifact(ID)
+	path, unlock, err := dst.GetBucket(ID)
 	defer unlock()
 	require.NoError(t, err)
 	assert.NotNil(t, path)
@@ -113,7 +113,7 @@ func Test_TransferArtifact(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func Test_ArtifactExists_TransferFile(t *testing.T) {
+func Test_BucketExists_TransferFile(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -121,10 +121,10 @@ func Test_ArtifactExists_TransferFile(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newArtifactID(t, "00000000000000000001")
+	ID := newBucketID(t, "00000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := src.CreateArtifact(ID, trashTime)
+	path, commit, _, err := src.CreateBucket(ID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -137,7 +137,7 @@ func Test_ArtifactExists_TransferFile(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	path, commit, _, err = dst.CreateArtifact(ID, trashTime)
+	path, commit, _, err = dst.CreateBucket(ID, trashTime)
 	require.NoError(t, err)
 
 	f, err = os.Create(filepath.Join(path, "c.txt"))
@@ -151,7 +151,7 @@ func Test_ArtifactExists_TransferFile(t *testing.T) {
 	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt")
 	require.NoError(t, err)
 
-	path, unlock, err := dst.GetArtifact(ID)
+	path, unlock, err := dst.GetBucket(ID)
 	defer unlock()
 	require.NoError(t, err)
 	assert.NotNil(t, path)
@@ -165,7 +165,7 @@ func Test_ArtifactExists_TransferFile(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_ArtifactNotExists_TransferFile(t *testing.T) {
+func Test_BucketNotExists_TransferFile(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -173,10 +173,10 @@ func Test_ArtifactNotExists_TransferFile(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newArtifactID(t, "00000000000000000001")
+	ID := newBucketID(t, "00000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := src.CreateArtifact(ID, trashTime)
+	path, commit, _, err := src.CreateBucket(ID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -189,7 +189,7 @@ func Test_ArtifactNotExists_TransferFile(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	path, commit, _, err = dst.CreateArtifact(ID, trashTime)
+	path, commit, _, err = dst.CreateBucket(ID, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
@@ -198,7 +198,7 @@ func Test_ArtifactNotExists_TransferFile(t *testing.T) {
 	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt")
 	require.NoError(t, err)
 
-	path, unlock, err := dst.GetArtifact(ID)
+	path, unlock, err := dst.GetBucket(ID)
 	defer unlock()
 	require.NoError(t, err)
 	assert.NotNil(t, path)
@@ -218,10 +218,10 @@ func Test_DownloadFailed(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newArtifactID(t, "00000000000000000001")
+	ID := newBucketID(t, "00000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := src.CreateArtifact(ID, trashTime)
+	path, commit, _, err := src.CreateBucket(ID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -234,7 +234,7 @@ func Test_DownloadFailed(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadArtifact(ctx, "http://localhost:5252", ID, trashTime)
+	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, trashTime)
 	require.Error(t, err)
 }
 
@@ -246,10 +246,10 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newArtifactID(t, "00000000000000000001")
+	ID := newBucketID(t, "00000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := src.CreateArtifact(ID, trashTime)
+	path, commit, _, err := src.CreateBucket(ID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -260,10 +260,10 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadArtifact(ctx, "http://localhost:5252", ID, trashTime)
+	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, trashTime)
 	require.NoError(t, err)
 
-	path, unlock, err := dst.GetArtifact(ID)
+	path, unlock, err := dst.GetBucket(ID)
 	unlock()
 	require.NoError(t, err)
 	assert.NotNil(t, path)
@@ -276,11 +276,11 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadArtifact(ctx, "http://localhost:5252", ID, trashTime)
+	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, trashTime)
 	require.NoError(t, err)
 }
 
-func Test_ArtifactTrashedAfterTrashTime(t *testing.T) {
+func Test_BucketTrashedAfterTrashTime(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -288,10 +288,10 @@ func Test_ArtifactTrashedAfterTrashTime(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newArtifactID(t, "00000000000000000001")
+	ID := newBucketID(t, "00000000000000000001")
 	trashTime := time.Now().Add(-time.Second)
 
-	path, commit, _, err := src.CreateArtifact(ID, trashTime)
+	path, commit, _, err := src.CreateBucket(ID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -302,11 +302,11 @@ func Test_ArtifactTrashedAfterTrashTime(t *testing.T) {
 
 	time.Sleep(3 * time.Second)
 
-	_, _, err = src.GetArtifact(ID)
-	require.ErrorIs(t, err, errs.ErrNotFound)
+	_, _, err = src.GetBucket(ID)
+	require.ErrorIs(t, err, ErrBucketNotFound)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadArtifact(ctx, "http://localhost:5252", ID, trashTime)
+	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, trashTime)
 	require.Error(t, err)
 }

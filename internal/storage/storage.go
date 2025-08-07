@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/DIvanCode/filestorage/internal/api/client"
-	"github.com/DIvanCode/filestorage/internal/artifact"
-	lock "github.com/DIvanCode/filestorage/internal/locker"
+	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
+	lock "github.com/DIvanCode/filestorage/internal/lib/locker"
 	trash "github.com/DIvanCode/filestorage/internal/trasher"
-	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"github.com/DIvanCode/filestorage/pkg/config"
-	errs "github.com/DIvanCode/filestorage/pkg/errors"
+	. "github.com/DIvanCode/filestorage/pkg/errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -75,60 +75,60 @@ func (s *Storage) Shutdown() {
 	s.trasher.Stop()
 }
 
-// GetArtifact Возвращает абсолютный путь артефакта artifactID
-// Артефакт блокируется в режиме на чтение. Для разблокировки необходимо вызвать unlock()
-func (s *Storage) GetArtifact(artifactID id.ID) (path string, unlock func(), err error) {
-	if err = s.locker.ReadLock(artifactID); err != nil {
+// GetBucket Возвращает абсолютный путь бакета id
+// Бакет блокируется в режиме на чтение. Для разблокировки необходимо вызвать unlock()
+func (s *Storage) GetBucket(id bucket.ID) (path string, unlock func(), err error) {
+	if err = s.locker.ReadLock(id); err != nil {
 		return
 	}
 
-	path = s.getAbsPath(artifactID)
+	path = s.getAbsPath(id)
 	if _, err = os.Stat(path); err != nil {
-		s.locker.ReadUnlock(artifactID)
+		s.locker.ReadUnlock(id)
 
 		if os.IsNotExist(err) {
-			err = errs.ErrNotFound
+			err = ErrBucketNotFound
 		}
 		return
 	}
 
 	unlock = func() {
-		s.locker.ReadUnlock(artifactID)
+		s.locker.ReadUnlock(id)
 	}
 
 	return
 }
 
-// CreateArtifact Создаёт артефакт artifactID
-// Артефакт создаётся во временной директории; path - абсолютный путь временной директории
+// CreateBucket Создаёт бакет id
+// Бакет создаётся во временной директории; path - абсолютный путь временной директории
 // При вызове функции commit() он перемещается в storage
 // При вызове функции abort() он удаляется
-func (s *Storage) CreateArtifact(
-	artifactID id.ID,
+func (s *Storage) CreateBucket(
+	id bucket.ID,
 	trashTime time.Time,
 ) (path string, commit, abort func() error, err error) {
-	if err = s.locker.WriteLock(artifactID); err != nil {
+	if err = s.locker.WriteLock(id); err != nil {
 		return
 	}
 
-	if s.existsArtifact(artifactID) {
-		err = errs.ErrAlreadyExists
+	if s.existsBucket(id) {
+		err = ErrBucketAlreadyExists
 		return
 	}
 
-	path = filepath.Join(s.tmpDir, artifactID.String())
+	path = filepath.Join(s.tmpDir, id.String())
 	create := func() error {
 		if err = os.MkdirAll(path, 0777); err != nil {
 			return err
 		}
 
-		meta := artifact.Meta{
-			ID:        artifactID,
+		meta := BucketMeta{
+			BucketID:  id,
 			TrashTime: trashTime,
 		}
 
 		var f *os.File
-		f, err = os.OpenFile(filepath.Join(path, meta.ID.String()[:]+".meta.json"), os.O_CREATE|os.O_WRONLY, 0777)
+		f, err = os.OpenFile(filepath.Join(path, s.getMetaFile(id)), os.O_CREATE|os.O_WRONLY, 0777)
 		if err != nil {
 			return err
 		}
@@ -149,13 +149,13 @@ func (s *Storage) CreateArtifact(
 	}
 
 	abort = func() error {
-		defer s.locker.WriteUnlock(artifactID)
+		defer s.locker.WriteUnlock(id)
 		return os.RemoveAll(path)
 	}
 
 	commit = func() error {
-		defer s.locker.WriteUnlock(artifactID)
-		return os.Rename(path, s.getAbsPath(artifactID))
+		defer s.locker.WriteUnlock(id)
+		return os.Rename(path, s.getAbsPath(id))
 	}
 
 	if err = create(); err != nil {
@@ -166,26 +166,26 @@ func (s *Storage) CreateArtifact(
 	return
 }
 
-// CreateFile Создаёт файл file в существующем артефакте artifactID
+// CreateFile Создаёт файл file в существующем бакете bucketID
 // Файл создаётся во временной директории; path - абсолютный путь до временной директории
 // При вызове функции commit() он перемещается в storage
 // При вызове функции abort() он удаляется
-func (s *Storage) CreateFile(artifactID id.ID, file string) (path string, commit, abort func() error, err error) {
-	if err = s.locker.WriteLock(artifactID); err != nil {
+func (s *Storage) CreateFile(bucketID bucket.ID, file string) (path string, commit, abort func() error, err error) {
+	if err = s.locker.WriteLock(bucketID); err != nil {
 		return
 	}
 
-	if !s.existsArtifact(artifactID) {
-		err = errs.ErrNotFound
+	if !s.existsBucket(bucketID) {
+		err = ErrBucketNotFound
 		return
 	}
 
-	if s.existsFile(artifactID, file) {
-		err = errs.ErrAlreadyExists
+	if s.existsFile(bucketID, file) {
+		err = ErrFileAlreadyExists
 		return
 	}
 
-	path = filepath.Join(s.tmpDir, artifactID.String())
+	path = filepath.Join(s.tmpDir, bucketID.String())
 	create := func() error {
 		if err = os.MkdirAll(path, 0777); err != nil {
 			return err
@@ -202,13 +202,13 @@ func (s *Storage) CreateFile(artifactID id.ID, file string) (path string, commit
 	}
 
 	abort = func() error {
-		defer s.locker.WriteUnlock(artifactID)
+		defer s.locker.WriteUnlock(bucketID)
 		return os.RemoveAll(path)
 	}
 
 	commit = func() error {
-		defer s.locker.WriteUnlock(artifactID)
-		return os.Rename(filepath.Join(path, file), filepath.Join(s.getAbsPath(artifactID), file))
+		defer s.locker.WriteUnlock(bucketID)
+		return os.Rename(filepath.Join(path, file), filepath.Join(s.getAbsPath(bucketID), file))
 	}
 
 	if err = create(); err != nil {
@@ -219,15 +219,15 @@ func (s *Storage) CreateFile(artifactID id.ID, file string) (path string, commit
 	return
 }
 
-// DownloadArtifact Скачивает артефакт artifactID с указанного endpoint
-func (s *Storage) DownloadArtifact(
+// DownloadBucket Скачивает бакет id с указанного endpoint
+func (s *Storage) DownloadBucket(
 	ctx context.Context,
 	endpoint string,
-	artifactID id.ID,
+	id bucket.ID,
 	trashTime time.Time,
 ) error {
-	path, commit, abort, err := s.CreateArtifact(artifactID, trashTime)
-	if err != nil && errors.Is(err, errs.ErrAlreadyExists) {
+	path, commit, abort, err := s.CreateBucket(id, trashTime)
+	if err != nil && errors.Is(err, ErrBucketAlreadyExists) {
 		return nil
 	}
 	if err != nil {
@@ -235,7 +235,7 @@ func (s *Storage) DownloadArtifact(
 	}
 
 	c := client.NewClient(endpoint)
-	if err = c.DownloadArtifact(ctx, artifactID, path); err != nil {
+	if err = c.DownloadBucket(ctx, id, path); err != nil {
 		_ = abort()
 		return err
 	}
@@ -248,15 +248,15 @@ func (s *Storage) DownloadArtifact(
 	return nil
 }
 
-// DownloadFile Скачивает файл file в существующем артефакте artifactID с указанного endpoint
+// DownloadFile Скачивает файл file в существующий бакет bucketID с указанного endpoint
 func (s *Storage) DownloadFile(
 	ctx context.Context,
 	endpoint string,
-	artifactID id.ID,
+	bucketID bucket.ID,
 	file string,
 ) error {
-	path, commit, abort, err := s.CreateFile(artifactID, file)
-	if err != nil && errors.Is(err, errs.ErrAlreadyExists) {
+	path, commit, abort, err := s.CreateFile(bucketID, file)
+	if err != nil && errors.Is(err, ErrFileAlreadyExists) {
 		return nil
 	}
 	if err != nil {
@@ -264,7 +264,7 @@ func (s *Storage) DownloadFile(
 	}
 
 	c := client.NewClient(endpoint)
-	if err := c.DownloadFile(ctx, artifactID, path, file); err != nil {
+	if err := c.DownloadFile(ctx, bucketID, file, path); err != nil {
 		_ = abort()
 		return err
 	}
@@ -276,37 +276,40 @@ func (s *Storage) DownloadFile(
 	return nil
 }
 
-func (s *Storage) DeleteFile(artifactID id.ID, file string) error {
-	if err := s.locker.WriteLock(artifactID); err != nil {
+func (s *Storage) DeleteFile(bucketID bucket.ID, file string) error {
+	if err := s.locker.WriteLock(bucketID); err != nil {
 		return err
 	}
-	defer s.locker.WriteUnlock(artifactID)
+	defer s.locker.WriteUnlock(bucketID)
 
-	if !s.existsArtifact(artifactID) || !s.existsFile(artifactID, file) {
-		return errs.ErrNotFound
+	if !s.existsBucket(bucketID) {
+		return ErrBucketNotFound
+	}
+	if !s.existsFile(bucketID, file) {
+		return ErrFileNotFound
 	}
 
-	return os.RemoveAll(filepath.Join(s.getAbsPath(artifactID), file))
+	return os.RemoveAll(filepath.Join(s.getAbsPath(bucketID), file))
 }
 
-// GetArtifactMeta Возвращает метаинформацию об артефакте artifactID
-func (s *Storage) GetArtifactMeta(artifactID id.ID) (meta artifact.Meta, err error) {
-	if err = s.locker.ReadLock(artifactID); err != nil {
+// GetBucketMeta Возвращает метаинформацию о бакете id
+func (s *Storage) GetBucketMeta(id bucket.ID) (meta BucketMeta, err error) {
+	if err = s.locker.ReadLock(id); err != nil {
 		return
 	}
-	defer s.locker.ReadUnlock(artifactID)
+	defer s.locker.ReadUnlock(id)
 
-	path := s.getAbsPath(artifactID)
+	path := s.getAbsPath(id)
 	if _, err = os.Stat(path); err != nil {
-		s.locker.ReadUnlock(artifactID)
+		s.locker.ReadUnlock(id)
 
 		if os.IsNotExist(err) {
-			err = errs.ErrNotFound
+			err = ErrBucketNotFound
 		}
 		return
 	}
 
-	f, err := os.OpenFile(filepath.Join(path, artifactID.String()[:]+".meta.json"), os.O_RDONLY, 0777)
+	f, err := os.OpenFile(filepath.Join(path, s.getMetaFile(id)), os.O_RDONLY, 0777)
 	if err != nil {
 		return
 	}
@@ -319,14 +322,14 @@ func (s *Storage) GetArtifactMeta(artifactID id.ID) (meta artifact.Meta, err err
 	return
 }
 
-// RemoveArtifact Удаляет артефакт artifactID
-func (s *Storage) RemoveArtifact(artifactID id.ID) (err error) {
-	if err = s.locker.WriteLock(artifactID); err != nil {
+// RemoveBucket Удаляет бакет id
+func (s *Storage) RemoveBucket(id bucket.ID) (err error) {
+	if err = s.locker.WriteLock(id); err != nil {
 		return
 	}
-	defer s.locker.WriteUnlock(artifactID)
+	defer s.locker.WriteUnlock(id)
 
-	err = os.RemoveAll(s.getAbsPath(artifactID))
+	err = os.RemoveAll(s.getAbsPath(id))
 	if err != nil {
 		return
 	}
@@ -334,18 +337,22 @@ func (s *Storage) RemoveArtifact(artifactID id.ID) (err error) {
 	return
 }
 
-func (s *Storage) getAbsPath(artifactID id.ID) string {
-	return filepath.Join(s.rootDir, artifactID.String()[:2], artifactID.String()[:])
+func (s *Storage) getAbsPath(id bucket.ID) string {
+	return filepath.Join(s.rootDir, id.String()[:2], id.String()[:])
 }
 
-func (s *Storage) existsArtifact(artifactID id.ID) bool {
-	path := s.getAbsPath(artifactID)
+func (s *Storage) getMetaFile(id bucket.ID) string {
+	return id.String()[:] + ".meta.json"
+}
+
+func (s *Storage) existsBucket(id bucket.ID) bool {
+	path := s.getAbsPath(id)
 	_, err := os.Stat(path)
 	return err == nil
 }
 
-func (s *Storage) existsFile(artifactID id.ID, file string) bool {
-	path := filepath.Join(s.getAbsPath(artifactID), file)
+func (s *Storage) existsFile(bucketID bucket.ID, file string) bool {
+	path := filepath.Join(s.getAbsPath(bucketID), file)
 	_, err := os.Stat(path)
 	return err == nil
 }

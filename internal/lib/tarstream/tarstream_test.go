@@ -74,7 +74,7 @@ func TestTarStreamSendFileReceive(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(from, "b", "c", "y.txt"), []byte("yyy"), 0666))
 	require.NoError(t, os.WriteFile(filepath.Join(from, "a", "z.bin"), []byte("zzz"), 0666))
 
-	require.NoError(t, SendFile(from, filepath.Join("a", "x.bin"), &buf))
+	require.NoError(t, SendFile(filepath.Join("a", "x.bin"), from, &buf))
 	require.NoError(t, Receive(to, &buf))
 
 	checkDirExist := func(path string) {

@@ -3,8 +3,10 @@ package errors
 import "errors"
 
 var (
-	ErrNotFound      = errors.New("artifact not found")
-	ErrAlreadyExists = errors.New("artifact already exists")
-	ErrWriteLocked   = errors.New("artifact is locked for write")
-	ErrReadLocked    = errors.New("artifact is locked for read")
+	ErrBucketNotFound      = errors.New("bucket not found")
+	ErrFileNotFound        = errors.New("file not found")
+	ErrBucketAlreadyExists = errors.New("bucket already exists")
+	ErrFileAlreadyExists   = errors.New("file already exists")
+	ErrWriteLocked         = errors.New("bucket is locked for write")
+	ErrReadLocked          = errors.New("bucket is locked for read")
 )

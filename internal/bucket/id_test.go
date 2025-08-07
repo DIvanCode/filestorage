@@ -1,7 +1,7 @@
-package id
+package bucket
 
 import (
-	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -19,10 +19,10 @@ func TestIDFromStringOK(t *testing.T) {
 		{id: "A09568817359813EABCD"},
 	} {
 		t.Run(input.id, func(t *testing.T) {
-			var artifactID id.ID
-			err := artifactID.FromString(input.id)
+			var id bucket.ID
+			err := id.FromString(input.id)
 			require.NoError(t, err)
-			assert.Equal(t, input.id, artifactID.String())
+			assert.Equal(t, input.id, id.String())
 		})
 	}
 }
@@ -36,8 +36,8 @@ func TestIDFromStringError(t *testing.T) {
 		{id: ""},
 	} {
 		t.Run(input.id, func(t *testing.T) {
-			var artifactID id.ID
-			err := artifactID.FromString(input.id)
+			var id bucket.ID
+			err := id.FromString(input.id)
 			require.Error(t, err)
 		})
 	}
