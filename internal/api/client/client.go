@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/DIvanCode/filestorage/internal/api"
-	"github.com/DIvanCode/filestorage/internal/api/tarstream"
-	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	"github.com/DIvanCode/filestorage/internal/lib/tarstream"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"io"
 	"net/http"
 )
@@ -22,11 +22,11 @@ func NewClient(endpoint string) *Client {
 	}
 }
 
-func (c *Client) DownloadArtifact(ctx context.Context, artifactID id.ID, path string) error {
+func (c *Client) DownloadBucket(ctx context.Context, id bucket.ID, path string) error {
 	httpReq, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		c.endpoint+"/artifact?id="+artifactID.String(),
+		c.endpoint+"/bucket?id="+id.String(),
 		bytes.NewBuffer(nil))
 	if err != nil {
 		return err
@@ -50,7 +50,7 @@ func (c *Client) DownloadArtifact(ctx context.Context, artifactID id.ID, path st
 	return tarstream.Receive(path, httpResp.Body)
 }
 
-func (c *Client) DownloadFile(ctx context.Context, artifactID id.ID, path, file string) error {
+func (c *Client) DownloadFile(ctx context.Context, bucketID bucket.ID, file, path string) error {
 	req := api.DownloadFileRequest{File: file}
 	jsonReq, err := json.Marshal(req)
 	if err != nil {
@@ -59,7 +59,7 @@ func (c *Client) DownloadFile(ctx context.Context, artifactID id.ID, path, file 
 	httpReq, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		c.endpoint+"/artifact-file?id="+artifactID.String(),
+		c.endpoint+"/file?bucket-id="+bucketID.String(),
 		bytes.NewBuffer(jsonReq))
 	if err != nil {
 		return err

@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/DIvanCode/filestorage/internal/api/handler"
 	"github.com/DIvanCode/filestorage/internal/storage"
-	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"github.com/DIvanCode/filestorage/pkg/config"
 	"github.com/go-chi/chi/v5"
 	"log/slog"
@@ -12,12 +12,12 @@ import (
 )
 
 type FileStorage interface {
-	GetArtifact(artifactID id.ID) (path string, unlock func(), err error)
-	CreateArtifact(artifactID id.ID, trashTime time.Time) (path string, commit, abort func() error, err error)
-	CreateFile(artifactID id.ID, file string) (path string, commit, abort func() error, err error)
-	DownloadArtifact(ctx context.Context, endpoint string, artifactID id.ID, trashTime time.Time) error
-	DownloadFile(ctx context.Context, endpoint string, artifactID id.ID, file string) error
-	DeleteFile(artifactID id.ID, file string) error
+	GetBucket(id bucket.ID) (path string, unlock func(), err error)
+	CreateBucket(id bucket.ID, trashTime time.Time) (path string, commit, abort func() error, err error)
+	CreateFile(bucketID bucket.ID, file string) (path string, commit, abort func() error, err error)
+	DownloadBucket(ctx context.Context, endpoint string, id bucket.ID, trashTime time.Time) error
+	DownloadFile(ctx context.Context, endpoint string, bucketID bucket.ID, file string) error
+	DeleteFile(bucketID bucket.ID, file string) error
 	Shutdown()
 }
 

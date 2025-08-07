@@ -4,33 +4,35 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/DIvanCode/filestorage/internal/api"
-	"github.com/DIvanCode/filestorage/internal/api/tarstream"
-	"github.com/DIvanCode/filestorage/pkg/artifact/id"
-	errs "github.com/DIvanCode/filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/internal/lib/tarstream"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
+	. "github.com/DIvanCode/filestorage/pkg/errors"
 	"github.com/go-chi/chi/v5"
 	"net/http"
 )
 
-type Handler struct {
-	storage FileStorage
-}
+type (
+	Handler struct {
+		storage fileStorage
+	}
 
-type FileStorage interface {
-	GetArtifact(artifactID id.ID) (path string, unlock func(), err error)
-}
+	fileStorage interface {
+		GetBucket(id bucket.ID) (path string, unlock func(), err error)
+	}
+)
 
-func NewHandler(storage FileStorage) *Handler {
+func NewHandler(storage fileStorage) *Handler {
 	return &Handler{
 		storage: storage,
 	}
 }
 
 func (h *Handler) Register(mux *chi.Mux) {
-	mux.HandleFunc("/artifact", h.handleDownloadArtifact)
-	mux.HandleFunc("/artifact-file", h.handleDownloadArtifactFile)
+	mux.HandleFunc("/bucket", h.handleDownloadBucket)
+	mux.HandleFunc("/file", h.handleDownloadFile)
 }
 
-func (h *Handler) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleDownloadBucket(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -38,15 +40,15 @@ func (h *Handler) handleDownloadArtifact(w http.ResponseWriter, r *http.Request)
 
 	query := r.URL.Query()
 
-	var artifactID id.ID
-	if err := artifactID.FromString(query.Get("id")); err != nil {
+	var id bucket.ID
+	if err := id.FromString(query.Get("id")); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	path, unlock, err := h.storage.GetArtifact(artifactID)
+	path, unlock, err := h.storage.GetBucket(id)
 	if err != nil {
-		if errors.Is(err, errs.ErrNotFound) {
+		if errors.Is(err, ErrBucketNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -62,7 +64,7 @@ func (h *Handler) handleDownloadArtifact(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-func (h *Handler) handleDownloadArtifactFile(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -70,8 +72,8 @@ func (h *Handler) handleDownloadArtifactFile(w http.ResponseWriter, r *http.Requ
 
 	query := r.URL.Query()
 
-	var artifactID id.ID
-	if err := artifactID.FromString(query.Get("id")); err != nil {
+	var id bucket.ID
+	if err := id.FromString(query.Get("bucket-id")); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -82,9 +84,9 @@ func (h *Handler) handleDownloadArtifactFile(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	path, unlock, err := h.storage.GetArtifact(artifactID)
+	path, unlock, err := h.storage.GetBucket(id)
 	if err != nil {
-		if errors.Is(err, errs.ErrNotFound) {
+		if errors.Is(err, ErrBucketNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -94,7 +96,7 @@ func (h *Handler) handleDownloadArtifactFile(w http.ResponseWriter, r *http.Requ
 	defer unlock()
 
 	w.Header().Set("Content-Type", "application/x-tar")
-	if err := tarstream.SendFile(path, req.File, w); err != nil {
+	if err := tarstream.SendFile(req.File, path, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

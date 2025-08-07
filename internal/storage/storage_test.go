@@ -2,9 +2,9 @@ package storage
 
 import (
 	"context"
-	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"github.com/DIvanCode/filestorage/pkg/config"
-	errs "github.com/DIvanCode/filestorage/pkg/errors"
+	. "github.com/DIvanCode/filestorage/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -51,98 +51,98 @@ func newTestStorage(t *testing.T) *testStorage {
 	return s
 }
 
-func newArtifactID(t *testing.T, idNum int) id.ID {
+func newBucketID(t *testing.T, idNum int) bucket.ID {
 	idStr := strconv.Itoa(idNum)
 	for len(idStr) < 20 {
 		idStr = "0" + idStr
 	}
 
-	var artifactID id.ID
-	require.NoError(t, artifactID.FromString(idStr))
-	return artifactID
+	var id bucket.ID
+	require.NoError(t, id.FromString(idStr))
+	return id
 }
 
-func createArtifact(t *testing.T, s *testStorage, id id.ID, trashTime time.Time) {
-	_, commit, _, err := s.CreateArtifact(id, trashTime)
+func createBucket(t *testing.T, s *testStorage, id bucket.ID, trashTime time.Time) {
+	_, commit, _, err := s.CreateBucket(id, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 }
 
-func Test_GetArtifact_NotFound(t *testing.T) {
+func Test_GetBucket_NotFound(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 
-	path, unlock, err := s.GetArtifact(artifactID)
-	require.ErrorIs(t, err, errs.ErrNotFound)
+	path, unlock, err := s.GetBucket(bucketID)
+	require.ErrorIs(t, err, ErrBucketNotFound)
 	assert.NotNil(t, path)
 	assert.Nil(t, unlock)
 }
 
-func Test_GetArtifact_ParallelRead(t *testing.T) {
+func Test_GetBucket_ParallelRead(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	createArtifact(t, s, artifactID, trashTime)
+	createBucket(t, s, bucketID, trashTime)
 
-	path, unlock1, err := s.GetArtifact(artifactID)
+	path, unlock1, err := s.GetBucket(bucketID)
 	require.NoError(t, err)
 	assert.NotNil(t, path)
 	assert.NotNil(t, unlock1)
 	defer unlock1()
 
-	path, unlock2, err := s.GetArtifact(artifactID)
+	path, unlock2, err := s.GetBucket(bucketID)
 	require.NoError(t, err)
 	assert.NotNil(t, path)
 	assert.NotNil(t, unlock2)
 	defer unlock2()
 }
 
-func Test_GetArtifact_WriteLock(t *testing.T) {
+func Test_GetBucket_WriteLock(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	path, commit, _, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 
-	path, unlock, err := s.GetArtifact(artifactID)
-	require.ErrorIs(t, err, errs.ErrWriteLocked)
+	path, unlock, err := s.GetBucket(bucketID)
+	require.ErrorIs(t, err, ErrWriteLocked)
 	assert.NotNil(t, path)
 	assert.Nil(t, unlock)
 
-	_, _, _, err = s.CreateArtifact(artifactID, trashTime)
-	require.ErrorIs(t, err, errs.ErrWriteLocked)
+	_, _, _, err = s.CreateBucket(bucketID, trashTime)
+	require.ErrorIs(t, err, ErrWriteLocked)
 
 	require.NoError(t, commit())
 
-	path, unlock, err = s.GetArtifact(artifactID)
+	path, unlock, err = s.GetBucket(bucketID)
 	require.NoError(t, err)
 	assert.NotNil(t, path)
 	assert.NotNil(t, unlock)
 	defer unlock()
 }
 
-func Test_CreateArtifact_AlreadyExists(t *testing.T) {
+func Test_CreateBucket_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	createArtifact(t, s, artifactID, trashTime)
+	createBucket(t, s, bucketID, trashTime)
 
-	_, _, _, err := s.CreateArtifact(artifactID, trashTime)
-	require.ErrorIs(t, err, errs.ErrAlreadyExists)
+	_, _, _, err := s.CreateBucket(bucketID, trashTime)
+	require.ErrorIs(t, err, ErrBucketAlreadyExists)
 }
 
-func Test_CreateArtifact_CreateFile(t *testing.T) {
+func Test_CreateBucket_CreateFile(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	path, commit, _, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -151,7 +151,7 @@ func Test_CreateArtifact_CreateFile(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	path, unlock, err := s.GetArtifact(artifactID)
+	path, unlock, err := s.GetBucket(bucketID)
 	defer unlock()
 
 	_, err = os.Stat(filepath.Join(path, "a.txt"))
@@ -161,14 +161,14 @@ func Test_CreateArtifact_CreateFile(t *testing.T) {
 func Test_CreateFile(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	_, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	_, commit, _, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
-	path, commit, _, err := s.CreateFile(artifactID, "a.txt")
+	path, commit, _, err := s.CreateFile(bucketID, "a.txt")
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -180,7 +180,7 @@ func Test_CreateFile(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	path, unlock, err := s.GetArtifact(artifactID)
+	path, unlock, err := s.GetBucket(bucketID)
 	require.NoError(t, err)
 	defer unlock()
 
@@ -195,10 +195,10 @@ func Test_CreateFile(t *testing.T) {
 func Test_CreateFile_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	path, commit, _, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -207,103 +207,103 @@ func Test_CreateFile_AlreadyExists(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	_, _, _, err = s.CreateFile(artifactID, "a.txt")
-	require.ErrorIs(t, err, errs.ErrAlreadyExists)
+	_, _, _, err = s.CreateFile(bucketID, "a.txt")
+	require.ErrorIs(t, err, ErrFileAlreadyExists)
 }
 
-func Test_CreateFile_ArtifactNotExists(t *testing.T) {
+func Test_CreateFile_BucketNotFound(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 
-	_, _, _, err := s.CreateFile(artifactID, "a.txt")
-	require.ErrorIs(t, err, errs.ErrNotFound)
+	_, _, _, err := s.CreateFile(bucketID, "a.txt")
+	require.ErrorIs(t, err, ErrBucketNotFound)
 }
 
-func Test_RemoveArtifact_NotExisting(t *testing.T) {
+func Test_RemoveBucket_NotExisting(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
-	err := s.RemoveArtifact(artifactID)
+	bucketID := newBucketID(t, 1)
+	err := s.RemoveBucket(bucketID)
 	require.NoError(t, err)
 }
 
-func Test_RemoveArtifact_Removed(t *testing.T) {
+func Test_RemoveBucket_Removed(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	createArtifact(t, s, artifactID, trashTime)
+	createBucket(t, s, bucketID, trashTime)
 
-	path, unlock, err := s.GetArtifact(artifactID)
+	path, unlock, err := s.GetBucket(bucketID)
 	require.NoError(t, err)
 	unlock()
 
-	err = s.RemoveArtifact(artifactID)
+	err = s.RemoveBucket(bucketID)
 	require.NoError(t, err)
 
 	_, err = os.Stat(path)
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func Test_CreateArtifact_Abort(t *testing.T) {
+func Test_CreateBucket_Abort(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	path, _, abort, err := s.CreateArtifact(artifactID, trashTime)
+	path, _, abort, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, abort())
 
-	_, _, err = s.GetArtifact(artifactID)
-	require.ErrorIs(t, err, errs.ErrNotFound)
+	_, _, err = s.GetBucket(bucketID)
+	require.ErrorIs(t, err, ErrBucketNotFound)
 
 	_, err = os.Stat(path)
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func Test_GetArtifactMeta(t *testing.T) {
+func Test_GetBucketMeta(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	_, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	_, commit, _, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
-	meta, err := s.GetArtifactMeta(artifactID)
+	meta, err := s.GetBucketMeta(bucketID)
 	require.NoError(t, err)
 	assert.NotNil(t, meta)
-	assert.Equal(t, artifactID, meta.ID)
+	assert.Equal(t, bucketID, meta.BucketID)
 	assert.True(t, trashTime.Equal(meta.TrashTime))
 
-	_, _, err = s.GetArtifact(artifactID)
+	_, _, err = s.GetBucket(bucketID)
 	require.NoError(t, err)
 }
 
-func Test_DownloadArtifact_AlreadyExists(t *testing.T) {
+func Test_DownloadBucket_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	_, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	_, commit, _, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
-	err = s.DownloadArtifact(context.Background(), "some-endpoint", artifactID, trashTime)
+	err = s.DownloadBucket(context.Background(), "some-endpoint", bucketID, trashTime)
 	require.NoError(t, err)
 }
 
 func Test_DownloadFile_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
 
-	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	path, commit, _, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -312,16 +312,16 @@ func Test_DownloadFile_AlreadyExists(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	err = s.DownloadFile(context.Background(), "some-endpoint", artifactID, "a.txt")
+	err = s.DownloadFile(context.Background(), "some-endpoint", bucketID, "a.txt")
 	require.NoError(t, err)
 }
 
 func Test_DeleteFile_Deleted(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	path, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	path, commit, _, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -330,10 +330,10 @@ func Test_DeleteFile_Deleted(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	err = s.DeleteFile(artifactID, "a.txt")
+	err = s.DeleteFile(bucketID, "a.txt")
 	require.NoError(t, err)
 
-	path, unlock, err := s.GetArtifact(artifactID)
+	path, unlock, err := s.GetBucket(bucketID)
 	require.NoError(t, err)
 
 	_, err = os.Stat(filepath.Join(path, "a.txt"))
@@ -345,12 +345,12 @@ func Test_DeleteFile_Deleted(t *testing.T) {
 func Test_DeleteFile_NotExists(t *testing.T) {
 	s := newTestStorage(t)
 
-	artifactID := newArtifactID(t, 1)
+	bucketID := newBucketID(t, 1)
 	trashTime := time.Now().Add(time.Minute)
-	_, commit, _, err := s.CreateArtifact(artifactID, trashTime)
+	_, commit, _, err := s.CreateBucket(bucketID, trashTime)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
-	err = s.DeleteFile(artifactID, "a.txt")
-	require.ErrorIs(t, err, errs.ErrNotFound)
+	err = s.DeleteFile(bucketID, "a.txt")
+	require.ErrorIs(t, err, ErrFileNotFound)
 }

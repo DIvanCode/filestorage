@@ -1,5 +1,5 @@
 package api
 
 type DownloadFileRequest struct {
-	File string
+	File string `json:"file"`
 }

@@ -64,7 +64,7 @@ func Send(dir string, w io.Writer) error {
 }
 
 // SendFile берём файл вместе с путём и сериализует его содержимое в поток w.
-func SendFile(dir string, file string, w io.Writer) error {
+func SendFile(file, dir string, w io.Writer) error {
 	tw := tar.NewWriter(w)
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {

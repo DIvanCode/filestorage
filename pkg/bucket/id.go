@@ -1,4 +1,4 @@
-package id
+package bucket
 
 import (
 	"encoding/hex"

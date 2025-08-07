@@ -3,20 +3,20 @@ package trasher
 import (
 	"context"
 	"fmt"
-	"github.com/DIvanCode/filestorage/internal/artifact"
-	"github.com/DIvanCode/filestorage/pkg/artifact/id"
+	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
+	"github.com/DIvanCode/filestorage/internal/lib/queue"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"github.com/DIvanCode/filestorage/pkg/config"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 )
 
 type Trasher struct {
 	cfg config.TrasherConfig
 
-	collectedArtifactsQueue queue
+	collectedBucketsQueue *queue.Queue[bucket.ID]
 
 	cancelFunc context.CancelFunc
 
@@ -24,15 +24,15 @@ type Trasher struct {
 }
 
 type FileStorage interface {
-	GetArtifactMeta(artifactID id.ID) (artifact.Meta, error)
-	RemoveArtifact(artifactID id.ID) error
+	GetBucketMeta(id bucket.ID) (BucketMeta, error)
+	RemoveBucket(id bucket.ID) error
 }
 
 func NewTrasher(log *slog.Logger, cfg config.TrasherConfig) (*Trasher, error) {
 	trasher := &Trasher{
 		cfg: cfg,
 
-		collectedArtifactsQueue: queue{},
+		collectedBucketsQueue: queue.NewQueue[bucket.ID](),
 
 		log: log,
 	}
@@ -98,42 +98,42 @@ func (t *Trasher) collect(ctx context.Context, storage FileStorage, rootDir stri
 }
 
 func (t *Trasher) collectShard(ctx context.Context, storage FileStorage, shardDir string) error {
-	artifacts, err := os.ReadDir(shardDir)
+	buckets, err := os.ReadDir(shardDir)
 	if err != nil {
 		return fmt.Errorf("error reading shard %s: %v", shardDir, err)
 	}
 
-	for _, artifactDir := range artifacts {
+	for _, bucketDir := range buckets {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		if err := t.collectArtifact(storage, artifactDir.Name()); err != nil {
-			t.log.Error(fmt.Sprintf("error collecting artifact %s: %v", artifactDir.Name(), err))
+		if err := t.collectBucket(storage, bucketDir.Name()); err != nil {
+			t.log.Error(fmt.Sprintf("error collecting bucket %s: %v", bucketDir.Name(), err))
 		}
 	}
 
 	return nil
 }
 
-func (t *Trasher) collectArtifact(storage FileStorage, artifactDir string) error {
-	var artifactID id.ID
-	if err := artifactID.FromString(artifactDir); err != nil {
-		return fmt.Errorf("error reading artifact dir %s: %v", artifactDir, err)
+func (t *Trasher) collectBucket(storage FileStorage, bucketDir string) error {
+	var bucketID bucket.ID
+	if err := bucketID.FromString(bucketDir); err != nil {
+		return fmt.Errorf("error reading bucket dir %s: %v", bucketDir, err)
 	}
 
-	meta, err := storage.GetArtifactMeta(artifactID)
+	meta, err := storage.GetBucketMeta(bucketID)
 	if err != nil {
-		return fmt.Errorf("error getting artifact %s: %v", artifactID, err)
+		return fmt.Errorf("error getting bucket %s: %v", bucketID, err)
 	}
 
 	if !meta.TrashTime.Before(time.Now()) {
 		return nil
 	}
 
-	t.collectedArtifactsQueue.enqueue(artifactID)
+	t.collectedBucketsQueue.Enqueue(bucketID)
 
 	return nil
 }
@@ -150,54 +150,15 @@ func (t *Trasher) startWorker(ctx context.Context, storage FileStorage) {
 				break
 			}
 
-			artifactID := t.collectedArtifactsQueue.dequeue()
-			if artifactID == nil {
+			bucketID := t.collectedBucketsQueue.Dequeue()
+			if bucketID == nil {
 				continue
 			}
 
-			if err := storage.RemoveArtifact(*artifactID); err != nil {
-				t.log.Error(fmt.Sprintf("error removing artifact %s: %v", *artifactID, err))
+			if err := storage.RemoveBucket(*bucketID); err != nil {
+				t.log.Error(fmt.Sprintf("error removing bucket %s: %v", bucketID.String(), err))
 				continue
 			}
 		}
 	}()
-}
-
-type node struct {
-	artifactID id.ID
-	next       *node
-}
-
-type queue struct {
-	mu   sync.Mutex
-	head *node
-	tail *node
-}
-
-func (q *queue) enqueue(artifactID id.ID) {
-	node := &node{artifactID: artifactID, next: nil}
-
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	if q.head == nil {
-		q.head = node
-		q.tail = node
-	} else {
-		q.tail.next = node
-		q.tail = node
-	}
-}
-
-func (q *queue) dequeue() *id.ID {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	if q.head == nil {
-		return nil
-	}
-
-	artifactID := q.head.artifactID
-	q.head = q.head.next
-	return &artifactID
 }
