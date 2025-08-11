@@ -136,6 +136,7 @@ func (s *Storage) CreateBucket(
 	}
 
 	if s.existsBucket(id) {
+		s.locker.WriteUnlock(id)
 		err = ErrBucketAlreadyExists
 		return
 	}
@@ -200,11 +201,13 @@ func (s *Storage) CreateFile(bucketID bucket.ID, file string) (path string, comm
 	}
 
 	if !s.existsBucket(bucketID) {
+		s.locker.WriteUnlock(bucketID)
 		err = ErrBucketNotFound
 		return
 	}
 
 	if s.existsFile(bucketID, file) {
+		s.locker.WriteUnlock(bucketID)
 		err = ErrFileAlreadyExists
 		return
 	}
