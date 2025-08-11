@@ -156,6 +156,13 @@ func Test_CreateBucket_CreateFile(t *testing.T) {
 
 	_, err = os.Stat(filepath.Join(path, "a.txt"))
 	require.NoError(t, err)
+
+	path, unlock, err = s.GetFile(bucketID, "a.txt")
+	defer unlock()
+	require.NoError(t, err)
+
+	_, err = os.Stat(filepath.Join(path, "a.txt"))
+	require.NoError(t, err)
 }
 
 func Test_CreateFile(t *testing.T) {

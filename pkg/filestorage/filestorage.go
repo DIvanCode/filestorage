@@ -13,6 +13,7 @@ import (
 
 type FileStorage interface {
 	GetBucket(id bucket.ID) (path string, unlock func(), err error)
+	GetFile(bucketID bucket.ID, file string) (path string, unlock func(), err error)
 	CreateBucket(id bucket.ID, trashTime time.Time) (path string, commit, abort func() error, err error)
 	CreateFile(bucketID bucket.ID, file string) (path string, commit, abort func() error, err error)
 	DownloadBucket(ctx context.Context, endpoint string, id bucket.ID, trashTime time.Time) error
