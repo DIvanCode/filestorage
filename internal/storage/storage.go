@@ -99,6 +99,28 @@ func (s *Storage) GetBucket(id bucket.ID) (path string, unlock func(), err error
 	return
 }
 
+func (s *Storage) GetFile(bucketID bucket.ID, file string) (path string, unlock func(), err error) {
+	if err = s.locker.ReadLock(bucketID); err != nil {
+		return
+	}
+
+	path = s.getAbsPath(bucketID)
+	if _, err = os.Stat(filepath.Join(s.getAbsPath(bucketID), file)); err != nil {
+		s.locker.ReadUnlock(bucketID)
+
+		if os.IsNotExist(err) {
+			err = ErrFileNotFound
+		}
+		return
+	}
+
+	unlock = func() {
+		s.locker.ReadUnlock(bucketID)
+	}
+
+	return
+}
+
 // CreateBucket Создаёт бакет id
 // Бакет создаётся во временной директории; path - абсолютный путь временной директории
 // При вызове функции commit() он перемещается в storage
