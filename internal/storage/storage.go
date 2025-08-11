@@ -99,6 +99,8 @@ func (s *Storage) GetBucket(id bucket.ID) (path string, unlock func(), err error
 	return
 }
 
+// GetFile Возвращает абсолютный путь бакета bucketID, в котором лежит файл file
+// Бакет блокируется в режиме на чтение. Для разблокировки необходимо вызвать unlock()
 func (s *Storage) GetFile(bucketID bucket.ID, file string) (path string, unlock func(), err error) {
 	if err = s.locker.ReadLock(bucketID); err != nil {
 		return
