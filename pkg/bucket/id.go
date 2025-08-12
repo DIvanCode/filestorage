@@ -2,28 +2,31 @@ package bucket
 
 import (
 	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 type ID [sha1.Size]byte
 
 func (id *ID) FromString(s string) error {
-	bytes, err := hex.DecodeString(s)
-	if err != nil {
-		return fmt.Errorf("invalid hex string: %w", err)
+	if len(s) != len(id) {
+		return fmt.Errorf("invalid hex string length")
 	}
-	if len(bytes) != len(id) {
-		return fmt.Errorf("invalid hex string: %w", err)
+	for _, c := range s {
+		if '0' <= c && c <= '9' {
+			continue
+		}
+		if 'a' <= c && c <= 'f' {
+			continue
+		}
+		return fmt.Errorf("invalid hex string char: %c", c)
 	}
-	copy(id[:], bytes)
+	copy(id[:], s)
 	return nil
 }
 
 func (id *ID) String() string {
-	return strings.ToUpper(hex.EncodeToString(id[:]))
+	return string(id[:])
 }
 
 func (id *ID) UnmarshalJSON(data []byte) error {

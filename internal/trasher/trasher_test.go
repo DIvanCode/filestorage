@@ -20,7 +20,7 @@ func newBucketID(t *testing.T, idNum int) bucket.ID {
 	var id bucket.ID
 
 	idStr := strconv.Itoa(idNum)
-	for len(idStr) < 2*len(id) {
+	for len(idStr) < len(id) {
 		idStr = "0" + idStr
 	}
 
