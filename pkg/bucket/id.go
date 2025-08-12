@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-type ID [sha1.Size]byte
+type ID [2 * sha1.Size]byte
 
 func (id *ID) FromString(s string) error {
 	if len(s) != len(id) {
