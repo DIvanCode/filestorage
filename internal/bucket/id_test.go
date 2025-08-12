@@ -13,10 +13,10 @@ type testCase struct {
 
 func TestIDFromStringOK(t *testing.T) {
 	for _, input := range []testCase{
-		{id: "00000000000000000000"},
-		{id: "01E23FD9315CAB124096"},
-		{id: "FFFFFFFFFFFFFFFFFFFF"},
-		{id: "A09568817359813EABCD"},
+		{id: "0000000000000000000000000000000000000000"},
+		{id: "01E23FD9315CAB12409601E23FD9315CAB124096"},
+		{id: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"},
+		{id: "A09568817359813EABCDA09568817359813EABCD"},
 	} {
 		t.Run(input.id, func(t *testing.T) {
 			var id bucket.ID
@@ -29,10 +29,10 @@ func TestIDFromStringOK(t *testing.T) {
 
 func TestIDFromStringError(t *testing.T) {
 	for _, input := range []testCase{
-		{id: "0000000000000000P000"},
-		{id: "=-=-=-=-=-=-=-=-=-=-"},
-		{id: "FFFGFFFFFFFFFFFFFFFF"},
-		{id: "A09568817359813EAB"},
+		{id: "0000000000000000P0000000000000000000P000"},
+		{id: "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"},
+		{id: "FFFGFFFFFFFFFFFFFFFFFFFGFFFFFFFFFFFFFFFF"},
+		{id: "A09568817359813EABA09568817359813EAB"},
 		{id: ""},
 	} {
 		t.Run(input.id, func(t *testing.T) {

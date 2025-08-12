@@ -86,7 +86,7 @@ func Test_TransferBucket(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newBucketID(t, "00000000000000000001")
+	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
 	path, commit, _, err := src.CreateBucket(ID, trashTime)
@@ -121,7 +121,7 @@ func Test_BucketExists_TransferFile(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newBucketID(t, "00000000000000000001")
+	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
 	path, commit, _, err := src.CreateBucket(ID, trashTime)
@@ -173,7 +173,7 @@ func Test_BucketNotExists_TransferFile(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newBucketID(t, "00000000000000000001")
+	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
 	path, commit, _, err := src.CreateBucket(ID, trashTime)
@@ -218,7 +218,7 @@ func Test_DownloadFailed(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newBucketID(t, "00000000000000000001")
+	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
 	path, commit, _, err := src.CreateBucket(ID, trashTime)
@@ -246,7 +246,7 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newBucketID(t, "00000000000000000001")
+	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 	trashTime := time.Now().Add(time.Minute)
 
 	path, commit, _, err := src.CreateBucket(ID, trashTime)
@@ -288,7 +288,7 @@ func Test_BucketTrashedAfterTrashTime(t *testing.T) {
 	src := newTestStorage(t, "src", "localhost:5252")
 	dst := newTestStorage(t, "dst", "localhost:5253")
 
-	ID := newBucketID(t, "00000000000000000001")
+	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 	trashTime := time.Now().Add(-time.Second)
 
 	path, commit, _, err := src.CreateBucket(ID, trashTime)
