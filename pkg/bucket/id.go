@@ -1,20 +1,21 @@
 package bucket
 
 import (
+	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 )
 
-type ID [10]byte
+type ID [sha1.Size]byte
 
 func (id *ID) FromString(s string) error {
-	if len(s) != 20 {
-		return fmt.Errorf("invalid string length")
-	}
 	bytes, err := hex.DecodeString(s)
 	if err != nil {
+		return fmt.Errorf("invalid hex string: %w", err)
+	}
+	if len(bytes) != len(id) {
 		return fmt.Errorf("invalid hex string: %w", err)
 	}
 	copy(id[:], bytes)

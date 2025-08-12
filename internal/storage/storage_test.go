@@ -52,12 +52,13 @@ func newTestStorage(t *testing.T) *testStorage {
 }
 
 func newBucketID(t *testing.T, idNum int) bucket.ID {
+	var id bucket.ID
+
 	idStr := strconv.Itoa(idNum)
-	for len(idStr) < 20 {
+	for len(idStr) < 2*len(id) {
 		idStr = "0" + idStr
 	}
 
-	var id bucket.ID
 	require.NoError(t, id.FromString(idStr))
 	return id
 }
