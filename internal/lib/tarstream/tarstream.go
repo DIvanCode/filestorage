@@ -83,7 +83,7 @@ func SendFile(file, dir string, w io.Writer) error {
 
 		switch {
 		case info.IsDir():
-			if !strings.HasPrefix(file, rel) {
+			if !strings.HasPrefix(normalize(file), normalize(rel)) {
 				return nil
 			}
 
@@ -93,7 +93,7 @@ func SendFile(file, dir string, w io.Writer) error {
 			})
 
 		default:
-			if rel != file {
+			if normalize(rel) != normalize(file) {
 				return nil
 			}
 
@@ -161,4 +161,8 @@ func Receive(dir string, r io.Reader) error {
 			}
 		}
 	}
+}
+
+func normalize(path string) string {
+	return filepath.Clean(filepath.FromSlash(path))
 }

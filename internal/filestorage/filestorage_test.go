@@ -179,7 +179,8 @@ func Test_BucketNotExists_TransferFile(t *testing.T) {
 	path, commit, _, err := src.CreateBucket(ID, trashTime)
 	require.NoError(t, err)
 
-	f, err := os.Create(filepath.Join(path, "a.txt"))
+	require.NoError(t, os.MkdirAll(filepath.Join(path, "a"), 0666))
+	f, err := os.Create(filepath.Join(path, "a/a.txt"))
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
@@ -195,7 +196,7 @@ func Test_BucketNotExists_TransferFile(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt")
+	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a/a.txt")
 	require.NoError(t, err)
 
 	path, unlock, err := dst.GetBucket(ID)
@@ -204,7 +205,7 @@ func Test_BucketNotExists_TransferFile(t *testing.T) {
 	assert.NotNil(t, path)
 	assert.NotNil(t, unlock)
 
-	_, err = os.Stat(filepath.Join(path, "a.txt"))
+	_, err = os.Stat(filepath.Join(path, "a/a.txt"))
 	assert.NoError(t, err)
 	_, err = os.Stat(filepath.Join(path, "b.txt"))
 	assert.ErrorIs(t, err, os.ErrNotExist)
