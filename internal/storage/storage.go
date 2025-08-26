@@ -218,6 +218,17 @@ func (s *Storage) CreateFile(bucketID bucket.ID, file string) (path string, comm
 			return err
 		}
 
+		if err = os.MkdirAll(filepath.Dir(filepath.Join(path, file)), 0777); err != nil {
+			return err
+		}
+
+		var f *os.File
+		f, err = os.Create(filepath.Join(path, file))
+		if err != nil {
+			return err
+		}
+		defer func() { _ = f.Close() }()
+
 		return nil
 	}
 
@@ -229,7 +240,7 @@ func (s *Storage) CreateFile(bucketID bucket.ID, file string) (path string, comm
 	commit = func() error {
 		defer s.locker.WriteUnlock(bucketID)
 		dstPath := filepath.Join(s.getAbsPath(bucketID), file)
-		if err = os.MkdirAll(filepath.Dir(dstPath), 0666); err != nil {
+		if err = os.MkdirAll(filepath.Dir(dstPath), 0777); err != nil {
 			return err
 		}
 		return os.Rename(filepath.Join(path, file), dstPath)

@@ -141,7 +141,7 @@ func Receive(dir string, r io.Reader) error {
 		absPath := filepath.Join(dir, h.Name)
 
 		if h.Typeflag == tar.TypeDir {
-			if err := os.Mkdir(absPath, 0777); err != nil {
+			if err := os.MkdirAll(absPath, 0777); err != nil {
 				return err
 			}
 		} else {
