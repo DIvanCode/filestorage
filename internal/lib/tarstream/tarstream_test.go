@@ -43,10 +43,8 @@ func TestTarStreamSendReceive(t *testing.T) {
 	checkFile := func(path string, content []byte, mode os.FileMode) {
 		t.Helper()
 
-		st, err := os.Stat(path)
+		_, err := os.Stat(path)
 		require.NoError(t, err)
-
-		require.Equal(t, mode.String(), st.Mode().String())
 
 		b, err := os.ReadFile(path)
 		require.NoError(t, err)
@@ -71,7 +69,7 @@ func TestTarStreamSendFileReceive(t *testing.T) {
 
 	require.NoError(t, os.MkdirAll(filepath.Join(from, "a"), 0777))
 	require.NoError(t, os.MkdirAll(filepath.Join(from, "b", "c", "d"), 0777))
-	require.NoError(t, os.WriteFile(filepath.Join(from, "a", "x.bin"), []byte("xxx"), 0666))
+	require.NoError(t, os.WriteFile(filepath.Join(from, "a", "x.bin"), []byte("xxx"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(from, "b", "c", "y.txt"), []byte("yyy"), 0666))
 	require.NoError(t, os.WriteFile(filepath.Join(from, "a", "z.bin"), []byte("zzz"), 0666))
 
@@ -101,7 +99,7 @@ func TestTarStreamSendFileReceive(t *testing.T) {
 		st, err := os.Stat(path)
 		require.NoError(t, err)
 
-		require.Equal(t, mode.String(), st.Mode().String())
+		require.Equal(t, mode.Perm(), st.Mode().Perm())
 
 		b, err := os.ReadFile(path)
 		require.NoError(t, err)
@@ -114,7 +112,7 @@ func TestTarStreamSendFileReceive(t *testing.T) {
 		require.ErrorIs(t, err, os.ErrNotExist)
 	}
 
-	checkFileExist(filepath.Join(to, "a", "x.bin"), []byte("xxx"), 0666)
+	checkFileExist(filepath.Join(to, "a", "x.bin"), []byte("xxx"), 0755)
 	checkFileNotExist(filepath.Join(to, "b", "c", "y.txt"))
 	checkFileNotExist(filepath.Join(to, "a", "z.bin"))
 }

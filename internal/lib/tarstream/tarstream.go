@@ -27,8 +27,7 @@ func Send(dir string, w io.Writer) error {
 			return nil
 		}
 
-		switch {
-		case info.IsDir():
+		if info.IsDir() {
 			if err := tw.WriteHeader(&tar.Header{
 				Name:     rel,
 				Typeflag: tar.TypeDir,
@@ -36,28 +35,28 @@ func Send(dir string, w io.Writer) error {
 				return fmt.Errorf("failed to write dir (%s) header: %w", path, err)
 			}
 			return nil
-		default:
-			if err := tw.WriteHeader(&tar.Header{
-				Typeflag: tar.TypeReg,
-				Name:     rel,
-				Size:     info.Size(),
-				Mode:     int64(info.Mode()),
-			}); err != nil {
-				return fmt.Errorf("failed to write file (%s) header: %w", path, err)
-			}
-
-			f, err := os.Open(path)
-			if err != nil {
-				return fmt.Errorf("failed to open file %s: %w", path, err)
-			}
-			defer func() { _ = f.Close() }()
-
-			if _, err = io.Copy(tw, f); err != nil {
-				return fmt.Errorf("failed to write file %s: %w", path, err)
-			}
-
-			return nil
 		}
+
+		if err := tw.WriteHeader(&tar.Header{
+			Typeflag: tar.TypeReg,
+			Name:     rel,
+			Size:     info.Size(),
+			Mode:     int64(info.Mode()),
+		}); err != nil {
+			return fmt.Errorf("failed to write file (%s) header: %w", path, err)
+		}
+
+		f, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("failed to open file %s: %w", path, err)
+		}
+		defer func() { _ = f.Close() }()
+
+		if _, err = io.Copy(tw, f); err != nil {
+			return fmt.Errorf("failed to write file %s: %w", path, err)
+		}
+
+		return nil
 	})
 
 	if err != nil {
@@ -148,14 +147,14 @@ func Receive(dir string, r io.Reader) error {
 		absPath := filepath.Join(dir, h.Name)
 
 		if h.Typeflag == tar.TypeDir {
-			if err := os.MkdirAll(absPath, os.FileMode(h.Mode)&0777); err != nil {
+			if err := os.MkdirAll(absPath, 0777); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", h.Name, err)
 			}
 			continue
 		}
 
 		receiveFile := func() error {
-			f, err := os.OpenFile(absPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(h.Mode)&0777)
+			f, err := os.OpenFile(absPath, os.O_CREATE|os.O_WRONLY, os.FileMode(h.Mode)&0777)
 			if err != nil {
 				return fmt.Errorf("failed to create file %s: %w", h.Name, err)
 			}
