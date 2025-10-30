@@ -5,11 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+
 	"github.com/DIvanCode/filestorage/internal/api"
 	"github.com/DIvanCode/filestorage/internal/lib/tarstream"
 	"github.com/DIvanCode/filestorage/pkg/bucket"
-	"io"
-	"net/http"
 )
 
 type Client struct {

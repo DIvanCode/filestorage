@@ -3,14 +3,15 @@ package trasher
 import (
 	"context"
 	"fmt"
-	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
-	"github.com/DIvanCode/filestorage/internal/lib/queue"
-	"github.com/DIvanCode/filestorage/pkg/bucket"
-	"github.com/DIvanCode/filestorage/pkg/config"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
+
+	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
+	"github.com/DIvanCode/filestorage/internal/lib/queue"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
+	"github.com/DIvanCode/filestorage/pkg/config"
 )
 
 type Trasher struct {

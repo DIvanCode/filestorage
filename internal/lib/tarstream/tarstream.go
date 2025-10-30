@@ -2,6 +2,7 @@ package tarstream
 
 import (
 	"archive/tar"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,12 +15,12 @@ func Send(dir string, w io.Writer) error {
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to walk filepath: %w", err)
 		}
 
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get relative path of %s: %w", path, err)
 		}
 
 		if rel == "." {
@@ -28,31 +29,34 @@ func Send(dir string, w io.Writer) error {
 
 		switch {
 		case info.IsDir():
-			return tw.WriteHeader(&tar.Header{
+			if err := tw.WriteHeader(&tar.Header{
 				Name:     rel,
 				Typeflag: tar.TypeDir,
-			})
-
+			}); err != nil {
+				return fmt.Errorf("failed to write dir (%s) header: %w", path, err)
+			}
+			return nil
 		default:
-			h := &tar.Header{
+			if err := tw.WriteHeader(&tar.Header{
 				Typeflag: tar.TypeReg,
 				Name:     rel,
 				Size:     info.Size(),
 				Mode:     int64(info.Mode()),
-			}
-
-			if err := tw.WriteHeader(h); err != nil {
-				return err
+			}); err != nil {
+				return fmt.Errorf("failed to write file (%s) header: %w", path, err)
 			}
 
 			f, err := os.Open(path)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to open file %s: %w", path, err)
 			}
 			defer func() { _ = f.Close() }()
 
-			_, err = io.Copy(tw, f)
-			return err
+			if _, err = io.Copy(tw, f); err != nil {
+				return fmt.Errorf("failed to write file %s: %w", path, err)
+			}
+
+			return nil
 		}
 	})
 
@@ -60,7 +64,11 @@ func Send(dir string, w io.Writer) error {
 		return err
 	}
 
-	return tw.Close()
+	if err = tw.Close(); err != nil {
+		return fmt.Errorf("failed to close tarstream: %w", err)
+	}
+
+	return nil
 }
 
 // SendFile берём файл вместе с путём и сериализует его содержимое в поток w.
@@ -69,61 +77,59 @@ func SendFile(file, dir string, w io.Writer) error {
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to walk filepath: %w", err)
 		}
 
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get relative path of %s: %w", path, err)
 		}
 
-		if rel == "." {
+		if rel == "." || !strings.HasPrefix(normalize(file), normalize(rel)) {
 			return nil
 		}
 
-		switch {
-		case info.IsDir():
-			if !strings.HasPrefix(normalize(file), normalize(rel)) {
-				return nil
-			}
-
-			return tw.WriteHeader(&tar.Header{
+		if info.IsDir() {
+			if err := tw.WriteHeader(&tar.Header{
 				Name:     rel,
 				Typeflag: tar.TypeDir,
-			})
-
-		default:
-			if normalize(rel) != normalize(file) {
-				return nil
+			}); err != nil {
+				return fmt.Errorf("failed to write dir (%s) header: %w", path, err)
 			}
-
-			h := &tar.Header{
-				Typeflag: tar.TypeReg,
-				Name:     rel,
-				Size:     info.Size(),
-				Mode:     int64(info.Mode()),
-			}
-
-			if err := tw.WriteHeader(h); err != nil {
-				return err
-			}
-
-			f, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = f.Close() }()
-
-			_, err = io.Copy(tw, f)
-			return err
+			return nil
 		}
+
+		if err := tw.WriteHeader(&tar.Header{
+			Typeflag: tar.TypeReg,
+			Name:     rel,
+			Size:     info.Size(),
+			Mode:     int64(info.Mode()),
+		}); err != nil {
+			return fmt.Errorf("failed to write file (%s) header: %w", path, err)
+		}
+
+		f, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("failed to open file %s: %w", path, err)
+		}
+		defer func() { _ = f.Close() }()
+
+		if _, err = io.Copy(tw, f); err != nil {
+			return fmt.Errorf("failed to write file %s: %w", path, err)
+		}
+
+		return nil
 	})
 
 	if err != nil {
 		return err
 	}
 
-	return tw.Close()
+	if err = tw.Close(); err != nil {
+		return fmt.Errorf("failed to close tarstream: %w", err)
+	}
+
+	return nil
 }
 
 // Receive читает поток r и материализует содержимое потока внутри dir.
@@ -133,34 +139,45 @@ func Receive(dir string, r io.Reader) error {
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
-			return nil
-		} else if err != nil {
-			return err
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read from tarstream: %w", err)
 		}
 
 		absPath := filepath.Join(dir, h.Name)
 
 		if h.Typeflag == tar.TypeDir {
-			if err := os.MkdirAll(absPath, 0777); err != nil {
-				return err
+			if err := os.MkdirAll(absPath, os.FileMode(h.Mode)&0777); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", h.Name, err)
 			}
-		} else {
-			writeFile := func() error {
-				f, err := os.OpenFile(absPath, os.O_CREATE|os.O_WRONLY, os.FileMode(h.Mode))
-				if err != nil {
-					return err
-				}
-				defer func() { _ = f.Close() }()
+			continue
+		}
 
-				_, err = io.Copy(f, tr)
-				return err
+		receiveFile := func() error {
+			f, err := os.OpenFile(absPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(h.Mode)&0777)
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", h.Name, err)
+			}
+			defer func() { _ = f.Close() }()
+
+			if _, err = io.Copy(f, tr); err != nil {
+				return fmt.Errorf("failed to write file (%s) data: %w", h.Name, err)
 			}
 
-			if err := writeFile(); err != nil {
-				return err
-			}
+			return nil
+		}
+
+		if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+			return fmt.Errorf("failed to create subdirectories of file %s: %w", h.Name, err)
+		}
+
+		if err := receiveFile(); err != nil {
+			return fmt.Errorf("failed to receive file %s: %w", h.Name, err)
 		}
 	}
+
+	return nil
 }
 
 func normalize(path string) string {

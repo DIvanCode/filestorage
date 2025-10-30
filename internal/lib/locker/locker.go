@@ -1,24 +1,25 @@
 package locker
 
 import (
-	errs "github.com/DIvanCode/filestorage/pkg/errors"
 	"sync"
+
+	errs "github.com/DIvanCode/filestorage/pkg/errors"
 )
 
 type Locker struct {
 	mu          sync.Mutex
-	writeLocked map[interface{}]struct{}
-	readLocked  map[interface{}]int
+	writeLocked map[any]struct{}
+	readLocked  map[any]int
 }
 
 func NewLocker() *Locker {
 	return &Locker{
-		writeLocked: make(map[interface{}]struct{}),
-		readLocked:  make(map[interface{}]int),
+		writeLocked: make(map[any]struct{}),
+		readLocked:  make(map[any]int),
 	}
 }
 
-func (l *Locker) ReadLock(key interface{}) error {
+func (l *Locker) ReadLock(key any) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -30,7 +31,7 @@ func (l *Locker) ReadLock(key interface{}) error {
 	return nil
 }
 
-func (l *Locker) ReadUnlock(key interface{}) {
+func (l *Locker) ReadUnlock(key any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -40,7 +41,7 @@ func (l *Locker) ReadUnlock(key interface{}) {
 	}
 }
 
-func (l *Locker) WriteLock(key interface{}) error {
+func (l *Locker) WriteLock(key any) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -55,7 +56,7 @@ func (l *Locker) WriteLock(key interface{}) error {
 	return nil
 }
 
-func (l *Locker) WriteUnlock(key interface{}) {
+func (l *Locker) WriteUnlock(key any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

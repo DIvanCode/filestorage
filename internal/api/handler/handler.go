@@ -3,12 +3,14 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
+	"time"
+
 	"github.com/DIvanCode/filestorage/internal/api"
 	"github.com/DIvanCode/filestorage/internal/lib/tarstream"
 	"github.com/DIvanCode/filestorage/pkg/bucket"
 	. "github.com/DIvanCode/filestorage/pkg/errors"
 	"github.com/go-chi/chi/v5"
-	"net/http"
 )
 
 type (
@@ -17,7 +19,7 @@ type (
 	}
 
 	fileStorage interface {
-		GetBucket(id bucket.ID) (path string, unlock func(), err error)
+		GetBucket(id bucket.ID, addTTL *time.Duration) (path string, unlock func(), err error)
 	}
 )
 
@@ -46,7 +48,7 @@ func (h *Handler) handleDownloadBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, unlock, err := h.storage.GetBucket(id)
+	path, unlock, err := h.storage.GetBucket(id, nil)
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -84,7 +86,7 @@ func (h *Handler) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, unlock, err := h.storage.GetBucket(id)
+	path, unlock, err := h.storage.GetBucket(id, nil)
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)

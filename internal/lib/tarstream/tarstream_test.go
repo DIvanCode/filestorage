@@ -2,10 +2,11 @@ package tarstream
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestTarStreamSendReceive(t *testing.T) {
@@ -116,4 +117,49 @@ func TestTarStreamSendFileReceive(t *testing.T) {
 	checkFileExist(filepath.Join(to, "a", "x.bin"), []byte("xxx"), 0666)
 	checkFileNotExist(filepath.Join(to, "b", "c", "y.txt"))
 	checkFileNotExist(filepath.Join(to, "a", "z.bin"))
+}
+
+func TestTarStreamExecutablePermissions(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tarstream-exec")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	from := filepath.Join(tmpDir, "from")
+	to := filepath.Join(tmpDir, "to")
+
+	require.NoError(t, os.Mkdir(from, 0777))
+	require.NoError(t, os.Mkdir(to, 0777))
+
+	var buf bytes.Buffer
+
+	require.NoError(t, os.WriteFile(filepath.Join(from, "normal.txt"), []byte("normal file"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(from, "executable.sh"), []byte("#!/bin/bash\necho hello"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(from, "readonly.txt"), []byte("read only"), 0444))
+	require.NoError(t, os.WriteFile(filepath.Join(from, "user_exec.go"), []byte("package main"), 0744))
+
+	require.NoError(t, Send(from, &buf))
+	require.NoError(t, Receive(to, &buf))
+
+	checkPermissions := func(path string, expectedMode os.FileMode) {
+		t.Helper()
+
+		st, err := os.Stat(path)
+		require.NoError(t, err)
+
+		actualPerm := st.Mode().Perm()
+		expectedPerm := expectedMode.Perm()
+
+		require.Equal(t, expectedPerm, actualPerm,
+			"File %s: expected permissions %o, got %o",
+			path, expectedPerm, actualPerm)
+	}
+
+	checkPermissions(filepath.Join(to, "normal.txt"), 0644)
+	checkPermissions(filepath.Join(to, "executable.sh"), 0755)
+	checkPermissions(filepath.Join(to, "readonly.txt"), 0444)
+	checkPermissions(filepath.Join(to, "user_exec.go"), 0744)
+
+	content, err := os.ReadFile(filepath.Join(to, "executable.sh"))
+	require.NoError(t, err)
+	require.Equal(t, "#!/bin/bash\necho hello", string(content))
 }
