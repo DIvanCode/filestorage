@@ -298,7 +298,7 @@ func (s *Storage) ReserveFile(bucketID bucket.ID, file string) (path string, com
 		return
 	}
 
-	path = filepath.Join(s.tmpDir, bucketID.String(), uuid.New().String())
+	path = filepath.Join(s.tmpDir, bucketID.String()+"_"+uuid.New().String())
 	create := func() error {
 		if err = os.MkdirAll(path, 0777); err != nil {
 			return fmt.Errorf("failed to create temp directory: %w", err)
