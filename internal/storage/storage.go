@@ -82,9 +82,13 @@ func (s *Storage) Shutdown() {
 // addTTL - длительность продления жизни бакета (без надобности оставьте nil)
 // Бакет блокируется в режиме на чтение. Для разблокировки необходимо вызвать unlock()
 // НЕ гарантируется консистентность данных при модификации данных
-func (s *Storage) GetBucket(id bucket.ID, addTTL *time.Duration) (path string, unlock func(), err error) {
+func (s *Storage) GetBucket(
+	ctx context.Context,
+	id bucket.ID,
+	addTTL *time.Duration,
+) (path string, unlock func(), err error) {
 	if addTTL != nil {
-		if err = s.addTTL(id, *addTTL); err != nil {
+		if err = s.addTTL(ctx, id, *addTTL); err != nil {
 			err = fmt.Errorf("failed to add bucket ttl: %w", err)
 			return
 		}
@@ -93,7 +97,7 @@ func (s *Storage) GetBucket(id bucket.ID, addTTL *time.Duration) (path string, u
 	unlockBucket := func() {
 		s.locker.ReadUnlock(id)
 	}
-	if err = s.locker.ReadLock(id); err != nil {
+	if err = s.locker.ReadLock(ctx, id); err != nil {
 		err = fmt.Errorf("failed to read lock bucket: %w", err)
 		return
 	}
@@ -123,12 +127,16 @@ func (s *Storage) GetBucket(id bucket.ID, addTTL *time.Duration) (path string, u
 // GetFile Возвращает абсолютный путь бакета bucketID, в котором лежит файл file
 // Бакет и файл блокируются в режиме на чтение. Для разблокировки необходимо вызвать unlock()
 // НЕ гарантируется консистентность данных при модификации данных
-func (s *Storage) GetFile(bucketID bucket.ID, file string) (path string, unlock func(), err error) {
+func (s *Storage) GetFile(
+	ctx context.Context,
+	bucketID bucket.ID,
+	file string,
+) (path string, unlock func(), err error) {
 	// read lock bucket
 	unlockBucket := func() {
 		s.locker.ReadUnlock(bucketID)
 	}
-	if err = s.locker.ReadLock(bucketID); err != nil {
+	if err = s.locker.ReadLock(ctx, bucketID); err != nil {
 		err = fmt.Errorf("failed to read lock bucket: %w", err)
 		return
 	}
@@ -142,7 +150,7 @@ func (s *Storage) GetFile(bucketID bucket.ID, file string) (path string, unlock 
 	unlockFile := func() {
 		s.locker.ReadUnlock(bucketID.String() + file)
 	}
-	if err = s.locker.ReadLock(bucketID.String() + file); err != nil {
+	if err = s.locker.ReadLock(ctx, bucketID.String()+file); err != nil {
 		err = fmt.Errorf("failed to read lock file in bucket: %w", err)
 		return
 	}
@@ -176,11 +184,15 @@ func (s *Storage) GetFile(bucketID bucket.ID, file string) (path string, unlock 
 // Бакет блокируется в режиме на запись. Для разблокировки необходимо вызвать commit() или abort()
 // При вызове функции commit() бакет перемещается в storage
 // При вызове функции abort() бакет удаляется
-func (s *Storage) ReserveBucket(id bucket.ID, ttl time.Duration) (path string, commit, abort func() error, err error) {
+func (s *Storage) ReserveBucket(
+	ctx context.Context,
+	id bucket.ID,
+	ttl time.Duration,
+) (path string, commit, abort func() error, err error) {
 	unlockBucket := func() {
 		s.locker.WriteUnlock(id)
 	}
-	if err = s.locker.WriteLock(id); err != nil {
+	if err = s.locker.WriteLock(ctx, id); err != nil {
 		err = fmt.Errorf("failed to write lock bucket: %w", err)
 		return
 	}
@@ -259,12 +271,16 @@ func (s *Storage) ReserveBucket(id bucket.ID, ttl time.Duration) (path string, c
 // Файл резервируется во временной директории; path - абсолютный путь до временной директории
 // При вызове функции commit() файл перемещается в storage
 // При вызове функции abort() файл удаляется
-func (s *Storage) ReserveFile(bucketID bucket.ID, file string) (path string, commit, abort func() error, err error) {
-	// write lock bucket
+func (s *Storage) ReserveFile(
+	ctx context.Context,
+	bucketID bucket.ID,
+	file string,
+) (path string, commit, abort func() error, err error) {
+	// read lock bucket
 	unlockBucket := func() {
 		s.locker.ReadUnlock(bucketID)
 	}
-	if err = s.locker.ReadLock(bucketID); err != nil {
+	if err = s.locker.ReadLock(ctx, bucketID); err != nil {
 		err = fmt.Errorf("failed to read lock bucket: %w", err)
 		return
 	}
@@ -283,7 +299,7 @@ func (s *Storage) ReserveFile(bucketID bucket.ID, file string) (path string, com
 	unlockFile := func() {
 		s.locker.WriteUnlock(bucketID.String() + file)
 	}
-	if err = s.locker.WriteLock(bucketID.String() + file); err != nil {
+	if err = s.locker.WriteLock(ctx, bucketID.String()+file); err != nil {
 		err = fmt.Errorf("failed to write lock file: %w", err)
 		return
 	}
@@ -351,9 +367,9 @@ func (s *Storage) DownloadBucket(
 	id bucket.ID,
 	ttl time.Duration,
 ) error {
-	path, commit, abort, err := s.ReserveBucket(id, ttl)
+	path, commit, abort, err := s.ReserveBucket(ctx, id, ttl)
 	if err != nil && errors.Is(err, ErrBucketAlreadyExists) {
-		if err = s.addTTL(id, ttl); err != nil {
+		if err = s.addTTL(ctx, id, ttl); err != nil {
 			return fmt.Errorf("failed to add bucket ttl: %w", err)
 		}
 		return nil
@@ -384,7 +400,7 @@ func (s *Storage) DownloadFile(
 	bucketID bucket.ID,
 	file string,
 ) error {
-	path, commit, abort, err := s.ReserveFile(bucketID, file)
+	path, commit, abort, err := s.ReserveFile(ctx, bucketID, file)
 	if err != nil && errors.Is(err, ErrFileAlreadyExists) {
 		return nil
 	}
@@ -407,11 +423,13 @@ func (s *Storage) DownloadFile(
 }
 
 // GetBucketMeta Возвращает метаинформацию о бакете id
-func (s *Storage) GetBucketMeta(id bucket.ID) (meta BucketMeta, err error) {
+func (s *Storage) GetBucketMeta(
+	ctx context.Context,
+	id bucket.ID) (meta BucketMeta, err error) {
 	unlockBucket := func() {
 		s.locker.ReadUnlock(id)
 	}
-	if err = s.locker.ReadLock(id); err != nil {
+	if err = s.locker.ReadLock(ctx, id); err != nil {
 		err = fmt.Errorf("failed to read lock bucket: %w", err)
 		return
 	}
@@ -443,11 +461,14 @@ func (s *Storage) GetBucketMeta(id bucket.ID) (meta BucketMeta, err error) {
 }
 
 // RemoveBucket Удаляет бакет id
-func (s *Storage) RemoveBucket(id bucket.ID) (err error) {
+func (s *Storage) RemoveBucket(
+	ctx context.Context,
+	id bucket.ID,
+) (err error) {
 	unlockBucket := func() {
 		s.locker.WriteUnlock(id)
 	}
-	if err = s.locker.WriteLock(id); err != nil {
+	if err = s.locker.WriteLock(ctx, id); err != nil {
 		err = fmt.Errorf("failed to write lock bucket: %w", err)
 		return
 	}
@@ -461,8 +482,12 @@ func (s *Storage) RemoveBucket(id bucket.ID) (err error) {
 	return
 }
 
-func (s *Storage) addTTL(id bucket.ID, addTTL time.Duration) error {
-	if err := s.locker.WriteLock(id); err != nil {
+func (s *Storage) addTTL(
+	ctx context.Context,
+	id bucket.ID,
+	addTTL time.Duration,
+) error {
+	if err := s.locker.WriteLock(ctx, id); err != nil {
 		return fmt.Errorf("failed to write lock bucket: %w", err)
 	}
 	defer s.locker.WriteUnlock(id)
