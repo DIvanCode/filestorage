@@ -265,7 +265,7 @@ func (s *Storage) ReserveFile(bucketID bucket.ID, file string) (path string, com
 		s.locker.ReadUnlock(bucketID)
 	}
 	if err = s.locker.ReadLock(bucketID); err != nil {
-		err = fmt.Errorf("failed to write lock bucket: %w", err)
+		err = fmt.Errorf("failed to read lock bucket: %w", err)
 		return
 	}
 	defer func() {
