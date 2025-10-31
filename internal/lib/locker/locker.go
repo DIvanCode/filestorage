@@ -1,64 +1,42 @@
 package locker
 
 import (
+	"context"
 	"sync"
 
-	errs "github.com/DIvanCode/filestorage/pkg/errors"
+	"github.com/DIvanCode/filestorage/internal/lib/mutex"
 )
 
 type Locker struct {
-	mu          sync.Mutex
-	writeLocked map[any]struct{}
-	readLocked  map[any]int
+	locks sync.Map // map[any]*SimpleRWMutex
 }
 
 func NewLocker() *Locker {
-	return &Locker{
-		writeLocked: make(map[any]struct{}),
-		readLocked:  make(map[any]int),
+	return &Locker{}
+}
+
+func (locker *Locker) ReadLock(ctx context.Context, key any) error {
+	value, _ := locker.locks.LoadOrStore(key, mutex.NewSimpleRWMutex())
+	mutex := value.(*mutex.SimpleRWMutex)
+	return mutex.ReadLock(ctx)
+}
+
+func (locker *Locker) ReadUnlock(key any) {
+	if value, ok := locker.locks.Load(key); ok {
+		mutex := value.(*mutex.SimpleRWMutex)
+		mutex.ReadUnlock()
 	}
 }
 
-func (l *Locker) ReadLock(key any) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if _, ok := l.writeLocked[key]; ok {
-		return errs.ErrWriteLocked
-	}
-
-	l.readLocked[key]++
-	return nil
+func (locker *Locker) WriteLock(ctx context.Context, key any) error {
+	value, _ := locker.locks.LoadOrStore(key, mutex.NewSimpleRWMutex())
+	mutex := value.(*mutex.SimpleRWMutex)
+	return mutex.WriteLock(ctx)
 }
 
-func (l *Locker) ReadUnlock(key any) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.readLocked[key]--
-	if l.readLocked[key] == 0 {
-		delete(l.readLocked, key)
+func (locker *Locker) WriteUnlock(key any) {
+	if value, ok := locker.locks.Load(key); ok {
+		mutex := value.(*mutex.SimpleRWMutex)
+		mutex.WriteUnlock()
 	}
-}
-
-func (l *Locker) WriteLock(key any) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if _, ok := l.writeLocked[key]; ok {
-		return errs.ErrWriteLocked
-	}
-	if l.readLocked[key] > 0 {
-		return errs.ErrReadLocked
-	}
-
-	l.writeLocked[key] = struct{}{}
-	return nil
-}
-
-func (l *Locker) WriteUnlock(key any) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	delete(l.writeLocked, key)
 }

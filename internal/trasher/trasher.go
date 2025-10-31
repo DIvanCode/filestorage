@@ -25,8 +25,8 @@ type Trasher struct {
 }
 
 type FileStorage interface {
-	GetBucketMeta(id bucket.ID) (BucketMeta, error)
-	RemoveBucket(id bucket.ID) error
+	GetBucketMeta(ctx context.Context, id bucket.ID) (BucketMeta, error)
+	RemoveBucket(ctx context.Context, id bucket.ID) error
 }
 
 func NewTrasher(log *slog.Logger, cfg config.TrasherConfig) (*Trasher, error) {
@@ -125,7 +125,8 @@ func (t *Trasher) collectBucket(storage FileStorage, bucketDir string) error {
 		return fmt.Errorf("error reading bucket dir %s: %v", bucketDir, err)
 	}
 
-	meta, err := storage.GetBucketMeta(bucketID)
+	ctx, _ := context.WithTimeout(context.Background(), time.Second)
+	meta, err := storage.GetBucketMeta(ctx, bucketID)
 	if err != nil {
 		return fmt.Errorf("error getting bucket %s: %v", bucketID, err)
 	}
@@ -156,7 +157,8 @@ func (t *Trasher) startWorker(ctx context.Context, storage FileStorage) {
 				continue
 			}
 
-			if err := storage.RemoveBucket(*bucketID); err != nil {
+			ctx, _ := context.WithTimeout(context.Background(), time.Second)
+			if err := storage.RemoveBucket(ctx, *bucketID); err != nil {
 				t.log.Error(fmt.Sprintf("error removing bucket %s: %v", bucketID.String(), err))
 				continue
 			}

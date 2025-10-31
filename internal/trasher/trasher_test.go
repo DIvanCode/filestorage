@@ -1,16 +1,18 @@
 package trasher_test
 
 import (
-	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
-	trash "github.com/DIvanCode/filestorage/internal/trasher"
-	"github.com/DIvanCode/filestorage/pkg/bucket"
-	"github.com/DIvanCode/filestorage/pkg/config"
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
+
+	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
+	trash "github.com/DIvanCode/filestorage/internal/trasher"
+	"github.com/DIvanCode/filestorage/pkg/bucket"
+	"github.com/DIvanCode/filestorage/pkg/config"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -32,12 +34,12 @@ type MockStorage struct {
 	mock.Mock
 }
 
-func (m *MockStorage) GetBucketMeta(id bucket.ID) (BucketMeta, error) {
+func (m *MockStorage) GetBucketMeta(ctx context.Context, id bucket.ID) (BucketMeta, error) {
 	args := m.Called(id)
 	return args.Get(0).(BucketMeta), args.Error(1)
 }
 
-func (m *MockStorage) RemoveBucket(id bucket.ID) error {
+func (m *MockStorage) RemoveBucket(ctx context.Context, id bucket.ID) error {
 	args := m.Called(id)
 	return args.Error(0)
 }
