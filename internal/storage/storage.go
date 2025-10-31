@@ -262,9 +262,9 @@ func (s *Storage) ReserveBucket(id bucket.ID, ttl time.Duration) (path string, c
 func (s *Storage) ReserveFile(bucketID bucket.ID, file string) (path string, commit, abort func() error, err error) {
 	// write lock bucket
 	unlockBucket := func() {
-		s.locker.WriteUnlock(bucketID)
+		s.locker.ReadUnlock(bucketID)
 	}
-	if err = s.locker.WriteLock(bucketID); err != nil {
+	if err = s.locker.ReadLock(bucketID); err != nil {
 		err = fmt.Errorf("failed to write lock bucket: %w", err)
 		return
 	}
