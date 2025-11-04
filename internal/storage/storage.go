@@ -189,8 +189,12 @@ func (s *Storage) ReserveBucket(
 	id bucket.ID,
 	ttl time.Duration,
 ) (path string, commit, abort func() error, err error) {
+	bucketUnlocked := false
 	unlockBucket := func() {
-		s.locker.WriteUnlock(id)
+		if !bucketUnlocked {
+			bucketUnlocked = true
+			s.locker.WriteUnlock(id)
+		}
 	}
 	if err = s.locker.WriteLock(ctx, id); err != nil {
 		err = fmt.Errorf("failed to write lock bucket: %w", err)
@@ -277,8 +281,12 @@ func (s *Storage) ReserveFile(
 	file string,
 ) (path string, commit, abort func() error, err error) {
 	// read lock bucket
+	bucketUnlocked := false
 	unlockBucket := func() {
-		s.locker.ReadUnlock(bucketID)
+		if !bucketUnlocked {
+			bucketUnlocked = true
+			s.locker.ReadUnlock(bucketID)
+		}
 	}
 	if err = s.locker.ReadLock(ctx, bucketID); err != nil {
 		err = fmt.Errorf("failed to read lock bucket: %w", err)
@@ -296,8 +304,12 @@ func (s *Storage) ReserveFile(
 	}
 
 	// write lock file
+	fileUnlocked := false
 	unlockFile := func() {
-		s.locker.WriteUnlock(bucketID.String() + file)
+		if !fileUnlocked {
+			fileUnlocked = true
+			s.locker.WriteUnlock(bucketID.String() + file)
+		}
 	}
 	if err = s.locker.WriteLock(ctx, bucketID.String()+file); err != nil {
 		err = fmt.Errorf("failed to write lock file: %w", err)
