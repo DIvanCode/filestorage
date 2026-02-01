@@ -13,10 +13,10 @@ import (
 )
 
 type FileStorage interface {
-	GetBucket(id bucket.ID, addTTL *time.Duration) (path string, unlock func(), err error)
-	GetFile(bucketID bucket.ID, file string) (path string, unlock func(), err error)
-	ReserveBucket(id bucket.ID, ttl time.Duration) (path string, commit, abort func() error, err error)
-	ReserveFile(bucketID bucket.ID, file string) (path string, commit, abort func() error, err error)
+	GetBucket(ctx context.Context, id bucket.ID, addTTL *time.Duration) (path string, unlock func(), err error)
+	GetFile(ctx context.Context, bucketID bucket.ID, file string) (path string, unlock func(), err error)
+	ReserveBucket(ctx context.Context, id bucket.ID, ttl time.Duration) (path string, commit, abort func() error, err error)
+	ReserveFile(ctx context.Context, bucketID bucket.ID, file string) (path string, commit, abort func() error, err error)
 	DownloadBucket(ctx context.Context, endpoint string, id bucket.ID, ttl time.Duration) error
 	DownloadFile(ctx context.Context, endpoint string, bucketID bucket.ID, file string) error
 	Shutdown()

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -19,7 +20,7 @@ type (
 	}
 
 	fileStorage interface {
-		GetBucket(id bucket.ID, addTTL *time.Duration) (path string, unlock func(), err error)
+		GetBucket(ctx context.Context, id bucket.ID, addTTL *time.Duration) (path string, unlock func(), err error)
 	}
 )
 
@@ -48,7 +49,7 @@ func (h *Handler) handleDownloadBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, unlock, err := h.storage.GetBucket(id, nil)
+	path, unlock, err := h.storage.GetBucket(r.Context(), id, nil)
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -86,7 +87,7 @@ func (h *Handler) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, unlock, err := h.storage.GetBucket(id, nil)
+	path, unlock, err := h.storage.GetBucket(r.Context(), id, nil)
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)

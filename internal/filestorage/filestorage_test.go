@@ -91,7 +91,7 @@ func Test_TransferBucket(t *testing.T) {
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 
-	path, commit, _, err := src.ReserveBucket(ID, time.Minute)
+	path, commit, _, err := src.ReserveBucket(context.Background(), ID, time.Minute)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -105,7 +105,7 @@ func Test_TransferBucket(t *testing.T) {
 	err = dst.DownloadBucket(ctx, "http://0.0.0.0:5252", ID, time.Minute)
 	require.NoError(t, err)
 
-	path, unlock, err := dst.GetBucket(ID, nil)
+	path, unlock, err := dst.GetBucket(context.Background(), ID, nil)
 	defer unlock()
 	require.NoError(t, err)
 	assert.NotNil(t, path)
@@ -127,7 +127,7 @@ func Test_BucketExists_TransferFile(t *testing.T) {
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 
-	path, commit, _, err := src.ReserveBucket(ID, time.Minute)
+	path, commit, _, err := src.ReserveBucket(context.Background(), ID, time.Minute)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -140,7 +140,7 @@ func Test_BucketExists_TransferFile(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	path, commit, _, err = dst.ReserveBucket(ID, time.Minute)
+	path, commit, _, err = dst.ReserveBucket(context.Background(), ID, time.Minute)
 	require.NoError(t, err)
 
 	f, err = os.Create(filepath.Join(path, "c.txt"))
@@ -154,7 +154,7 @@ func Test_BucketExists_TransferFile(t *testing.T) {
 	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt")
 	require.NoError(t, err)
 
-	path, unlock, err := dst.GetBucket(ID, nil)
+	path, unlock, err := dst.GetBucket(context.Background(), ID, nil)
 	defer unlock()
 	require.NoError(t, err)
 	assert.NotNil(t, path)
@@ -180,7 +180,7 @@ func Test_BucketNotExists_TransferFile(t *testing.T) {
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 
-	path, commit, _, err := src.ReserveBucket(ID, time.Minute)
+	path, commit, _, err := src.ReserveBucket(context.Background(), ID, time.Minute)
 	require.NoError(t, err)
 
 	require.NoError(t, os.MkdirAll(filepath.Join(path, "a"), 0777))
@@ -194,7 +194,7 @@ func Test_BucketNotExists_TransferFile(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	path, commit, _, err = dst.ReserveBucket(ID, time.Minute)
+	path, commit, _, err = dst.ReserveBucket(context.Background(), ID, time.Minute)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
@@ -203,7 +203,7 @@ func Test_BucketNotExists_TransferFile(t *testing.T) {
 	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a/a.txt")
 	require.NoError(t, err)
 
-	path, unlock, err := dst.GetBucket(ID, nil)
+	path, unlock, err := dst.GetBucket(context.Background(), ID, nil)
 	defer unlock()
 	require.NoError(t, err)
 	assert.NotNil(t, path)
@@ -227,7 +227,7 @@ func Test_DownloadFailed(t *testing.T) {
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 
-	path, commit, _, err := src.ReserveBucket(ID, time.Minute)
+	path, commit, _, err := src.ReserveBucket(context.Background(), ID, time.Minute)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -256,7 +256,7 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 
-	path, commit, _, err := src.ReserveBucket(ID, time.Minute)
+	path, commit, _, err := src.ReserveBucket(context.Background(), ID, time.Minute)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -270,7 +270,7 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, time.Minute)
 	require.NoError(t, err)
 
-	path, unlock, err := dst.GetBucket(ID, nil)
+	path, unlock, err := dst.GetBucket(context.Background(), ID, nil)
 	unlock()
 	require.NoError(t, err)
 	assert.NotNil(t, path)
@@ -299,7 +299,7 @@ func Test_BucketTrashedAfterTrashTime(t *testing.T) {
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
 
-	path, commit, _, err := src.ReserveBucket(ID, -time.Second)
+	path, commit, _, err := src.ReserveBucket(context.Background(), ID, -time.Second)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -310,10 +310,10 @@ func Test_BucketTrashedAfterTrashTime(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	_, _, err = src.GetBucket(ID, nil)
+	_, _, err = src.GetBucket(context.Background(), ID, nil)
 	if err == nil {
 		time.Sleep(time.Second)
-		_, _, err = src.GetBucket(ID, nil)
+		_, _, err = src.GetBucket(context.Background(), ID, nil)
 	}
 	require.ErrorIs(t, err, ErrBucketNotFound)
 
