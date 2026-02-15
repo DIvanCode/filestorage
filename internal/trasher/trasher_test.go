@@ -2,6 +2,7 @@ package trasher_test
 
 import (
 	"context"
+	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -9,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
 	trash "github.com/DIvanCode/filestorage/internal/trasher"
 	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"github.com/DIvanCode/filestorage/pkg/config"
@@ -52,7 +52,8 @@ func TestTrasherCollectAndRemove(t *testing.T) {
 	bucketID := newBucketID(t, 1)
 	require.NoError(t, os.Mkdir(filepath.Join(shardDir, bucketID.String()), 0777))
 
-	meta := BucketMeta{BucketID: bucketID, TrashTime: time.Now().Add(-time.Hour)}
+	trashTime := time.Now().Add(-time.Hour)
+	meta := BucketMeta{BucketID: bucketID, TrashTime: &trashTime}
 
 	mockStorage := new(MockStorage)
 	mockStorage.On("GetBucketMeta", bucketID).Return(meta, nil)
