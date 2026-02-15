@@ -65,7 +65,7 @@ func newBucketID(t *testing.T, idNum int) bucket.ID {
 }
 
 func reserveBucket(t *testing.T, s *testStorage, id bucket.ID, ttl time.Duration) {
-	_, commit, _, err := s.ReserveBucket(context.Background(), id, ttl)
+	_, commit, _, err := s.ReserveBucket(context.Background(), id, &ttl)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 }
@@ -103,8 +103,9 @@ func Test_GetBucket_WriteLock(t *testing.T) {
 	s := newTestStorage(t)
 
 	bucketID := newBucketID(t, 1)
+	ttl := time.Minute
 
-	path, commit, _, err := s.ReserveBucket(context.Background(), bucketID, time.Minute)
+	path, commit, _, err := s.ReserveBucket(context.Background(), bucketID, &ttl)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -115,7 +116,7 @@ func Test_GetBucket_WriteLock(t *testing.T) {
 
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, _, _, err = s.ReserveBucket(ctx, bucketID, time.Minute)
+	_, _, _, err = s.ReserveBucket(ctx, bucketID, &ttl)
 	require.ErrorIs(t, err, ctx.Err())
 
 	require.NoError(t, commit())
@@ -131,9 +132,11 @@ func Test_ReserveBucket_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
 	bucketID := newBucketID(t, 1)
-	reserveBucket(t, s, bucketID, time.Minute)
+	ttl := time.Minute
 
-	_, _, _, err := s.ReserveBucket(context.Background(), bucketID, time.Minute)
+	reserveBucket(t, s, bucketID, ttl)
+
+	_, _, _, err := s.ReserveBucket(context.Background(), bucketID, &ttl)
 	require.ErrorIs(t, err, ErrBucketAlreadyExists)
 }
 
@@ -141,8 +144,9 @@ func Test_ReserveBucket_ReserveFile(t *testing.T) {
 	s := newTestStorage(t)
 
 	bucketID := newBucketID(t, 1)
+	ttl := time.Minute
 
-	path, commit, _, err := s.ReserveBucket(context.Background(), bucketID, time.Minute)
+	path, commit, _, err := s.ReserveBucket(context.Background(), bucketID, &ttl)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -157,7 +161,7 @@ func Test_ReserveBucket_ReserveFile(t *testing.T) {
 	_, err = os.Stat(filepath.Join(path, "a.txt"))
 	require.NoError(t, err)
 
-	path, unlock, err = s.GetFile(context.Background(), bucketID, "a.txt")
+	path, unlock, err = s.GetFile(context.Background(), bucketID, "a.txt", nil)
 	defer unlock()
 	require.NoError(t, err)
 
@@ -169,8 +173,9 @@ func Test_ReserveFile(t *testing.T) {
 	s := newTestStorage(t)
 
 	bucketID := newBucketID(t, 1)
+	ttl := time.Minute
 
-	_, commit, _, err := s.ReserveBucket(context.Background(), bucketID, time.Minute)
+	_, commit, _, err := s.ReserveBucket(context.Background(), bucketID, &ttl)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
@@ -202,8 +207,9 @@ func Test_ReserveFile_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
 	bucketID := newBucketID(t, 1)
+	ttl := time.Minute
 
-	path, commit, _, err := s.ReserveBucket(context.Background(), bucketID, time.Minute)
+	path, commit, _, err := s.ReserveBucket(context.Background(), bucketID, &ttl)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))
@@ -254,8 +260,9 @@ func Test_ReserveBucket_Abort(t *testing.T) {
 	s := newTestStorage(t)
 
 	bucketID := newBucketID(t, 1)
+	ttl := time.Minute
 
-	path, _, abort, err := s.ReserveBucket(context.Background(), bucketID, time.Minute)
+	path, _, abort, err := s.ReserveBucket(context.Background(), bucketID, &ttl)
 	require.NoError(t, err)
 	require.NoError(t, abort())
 
@@ -271,8 +278,9 @@ func Test_GetBucketMeta(t *testing.T) {
 
 	bucketID := newBucketID(t, 1)
 	expectedTrashTime := time.Now().Add(time.Minute)
+	ttl := time.Minute
 
-	_, commit, _, err := s.ReserveBucket(context.Background(), bucketID, time.Minute)
+	_, commit, _, err := s.ReserveBucket(context.Background(), bucketID, &ttl)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
@@ -280,7 +288,8 @@ func Test_GetBucketMeta(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, meta)
 	assert.Equal(t, bucketID, meta.BucketID)
-	assert.True(t, expectedTrashTime.Before(meta.TrashTime))
+	assert.NotNil(t, meta.TrashTime)
+	assert.True(t, expectedTrashTime.Before(*meta.TrashTime))
 
 	_, _, err = s.GetBucket(context.Background(), bucketID, nil)
 	require.NoError(t, err)
@@ -290,12 +299,13 @@ func Test_DownloadBucket_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
 	bucketID := newBucketID(t, 1)
+	ttl := time.Minute
 
-	_, commit, _, err := s.ReserveBucket(context.Background(), bucketID, time.Minute)
+	_, commit, _, err := s.ReserveBucket(context.Background(), bucketID, &ttl)
 	require.NoError(t, err)
 	require.NoError(t, commit())
 
-	err = s.DownloadBucket(context.Background(), "some-endpoint", bucketID, time.Minute)
+	err = s.DownloadBucket(context.Background(), "some-endpoint", bucketID, &ttl)
 	require.NoError(t, err)
 }
 
@@ -303,8 +313,9 @@ func Test_DownloadFile_AlreadyExists(t *testing.T) {
 	s := newTestStorage(t)
 
 	bucketID := newBucketID(t, 1)
+	ttl := time.Minute
 
-	path, commit, _, err := s.ReserveBucket(context.Background(), bucketID, time.Minute)
+	path, commit, _, err := s.ReserveBucket(context.Background(), bucketID, &ttl)
 	require.NoError(t, err)
 
 	f, err := os.Create(filepath.Join(path, "a.txt"))

@@ -3,12 +3,12 @@ package trasher
 import (
 	"context"
 	"fmt"
+	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
 
-	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
 	"github.com/DIvanCode/filestorage/internal/lib/queue"
 	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"github.com/DIvanCode/filestorage/pkg/config"
@@ -125,13 +125,15 @@ func (t *Trasher) collectBucket(storage FileStorage, bucketDir string) error {
 		return fmt.Errorf("error reading bucket dir %s: %v", bucketDir, err)
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
 	meta, err := storage.GetBucketMeta(ctx, bucketID)
 	if err != nil {
 		return fmt.Errorf("error getting bucket %s: %v", bucketID, err)
 	}
 
-	if !meta.TrashTime.Before(time.Now()) {
+	if meta.TrashTime == nil || meta.TrashTime.After(time.Now()) {
 		return nil
 	}
 
@@ -157,10 +159,17 @@ func (t *Trasher) startWorker(ctx context.Context, storage FileStorage) {
 				continue
 			}
 
-			ctx, _ := context.WithTimeout(context.Background(), time.Second)
-			if err := storage.RemoveBucket(ctx, *bucketID); err != nil {
+			remove := func(bucketID bucket.ID) error {
+				removeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				if err := storage.RemoveBucket(removeCtx, bucketID); err != nil {
+					return err
+				}
+				return nil
+			}
+
+			if err := remove(*bucketID); err != nil {
 				t.log.Error(fmt.Sprintf("error removing bucket %s: %v", bucketID.String(), err))
-				continue
 			}
 		}
 	}()

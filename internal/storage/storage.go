@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/DIvanCode/filestorage/internal/api/client"
-	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
 	lock "github.com/DIvanCode/filestorage/internal/lib/locker"
 	trash "github.com/DIvanCode/filestorage/internal/trasher"
 	"github.com/DIvanCode/filestorage/pkg/bucket"
@@ -79,19 +79,17 @@ func (s *Storage) Shutdown() {
 }
 
 // GetBucket Возвращает абсолютный путь бакета id
-// addTTL - длительность продления жизни бакета (без надобности оставьте nil)
+// extendTTL - длительность продления жизни бакета (без надобности оставьте nil)
 // Бакет блокируется в режиме на чтение. Для разблокировки необходимо вызвать unlock()
-// НЕ гарантируется консистентность данных при модификации данных
+// НЕ гарантируется консистентность данных при модификации
 func (s *Storage) GetBucket(
 	ctx context.Context,
 	id bucket.ID,
-	addTTL *time.Duration,
+	extendTTL *time.Duration,
 ) (path string, unlock func(), err error) {
-	if addTTL != nil {
-		if err = s.addTTL(ctx, id, *addTTL); err != nil {
-			err = fmt.Errorf("failed to add bucket ttl: %w", err)
-			return
-		}
+	if err = s.extendTTL(ctx, id, extendTTL); err != nil {
+		err = fmt.Errorf("failed to extend bucket ttl: %w", err)
+		return
 	}
 
 	unlockBucket := func() {
@@ -126,12 +124,18 @@ func (s *Storage) GetBucket(
 
 // GetFile Возвращает абсолютный путь бакета bucketID, в котором лежит файл file
 // Бакет и файл блокируются в режиме на чтение. Для разблокировки необходимо вызвать unlock()
-// НЕ гарантируется консистентность данных при модификации данных
+// НЕ гарантируется консистентность данных при модификации
 func (s *Storage) GetFile(
 	ctx context.Context,
 	bucketID bucket.ID,
 	file string,
+	extendTTL *time.Duration,
 ) (path string, unlock func(), err error) {
+	if err = s.extendTTL(ctx, bucketID, extendTTL); err != nil {
+		err = fmt.Errorf("failed to extend bucket ttl: %w", err)
+		return
+	}
+
 	// read lock bucket
 	unlockBucket := func() {
 		s.locker.ReadUnlock(bucketID)
@@ -178,8 +182,8 @@ func (s *Storage) GetFile(
 	return
 }
 
-// ReserveBucket Разервирует бакет id
-// ttl - время жизни бакета
+// ReserveBucket Резервирует бакет id
+// ttl - время жизни бакета (оставьте nil, если бакет должен жить бессрочно)
 // Бакет изначально создаётся во временной директории; path - абсолютный путь временной директории
 // Бакет блокируется в режиме на запись. Для разблокировки необходимо вызвать commit() или abort()
 // При вызове функции commit() бакет перемещается в storage
@@ -187,7 +191,7 @@ func (s *Storage) GetFile(
 func (s *Storage) ReserveBucket(
 	ctx context.Context,
 	id bucket.ID,
-	ttl time.Duration,
+	ttl *time.Duration,
 ) (path string, commit, abort func() error, err error) {
 	bucketUnlocked := false
 	unlockBucket := func() {
@@ -217,9 +221,17 @@ func (s *Storage) ReserveBucket(
 			return fmt.Errorf("failed to create temp directory: %w", err)
 		}
 
-		bucketMeta := BucketMeta{
-			BucketID:  id,
-			TrashTime: time.Now().Add(ttl),
+		var bucketMeta BucketMeta
+		if ttl != nil {
+			trashTime := time.Now().Add(*ttl)
+			bucketMeta = BucketMeta{
+				BucketID:  id,
+				TrashTime: &trashTime,
+			}
+		} else {
+			bucketMeta = BucketMeta{
+				BucketID: id,
+			}
 		}
 
 		var f *os.File
@@ -371,18 +383,18 @@ func (s *Storage) ReserveFile(
 }
 
 // DownloadBucket Скачивает бакет id с указанного endpoint
-// ttl - время жизни бакета
+// ttl - время жизни бакета (оставьте nil, если бакет должен жить бессрочно)
 // Если бакет существует, то его время жизни продлевается на ttl
 func (s *Storage) DownloadBucket(
 	ctx context.Context,
 	endpoint string,
 	id bucket.ID,
-	ttl time.Duration,
+	ttl *time.Duration,
 ) error {
 	path, commit, abort, err := s.ReserveBucket(ctx, id, ttl)
 	if err != nil && errors.Is(err, ErrBucketAlreadyExists) {
-		if err = s.addTTL(ctx, id, ttl); err != nil {
-			return fmt.Errorf("failed to add bucket ttl: %w", err)
+		if err = s.extendTTL(ctx, id, ttl); err != nil {
+			return fmt.Errorf("failed to extend bucket ttl: %w", err)
 		}
 		return nil
 	}
@@ -494,11 +506,15 @@ func (s *Storage) RemoveBucket(
 	return
 }
 
-func (s *Storage) addTTL(
+func (s *Storage) extendTTL(
 	ctx context.Context,
 	id bucket.ID,
-	addTTL time.Duration,
+	extendTTL *time.Duration,
 ) error {
+	if extendTTL == nil {
+		return nil
+	}
+
 	if err := s.locker.WriteLock(ctx, id); err != nil {
 		return fmt.Errorf("failed to write lock bucket: %w", err)
 	}
@@ -517,7 +533,8 @@ func (s *Storage) addTTL(
 		return fmt.Errorf("failed to unmarshal bucket meta: %w", err)
 	}
 
-	bucketMeta.TrashTime = time.Now().Add(addTTL)
+	trashTime := time.Now().Add(*extendTTL)
+	bucketMeta.TrashTime = &trashTime
 
 	var bytes []byte
 	bytes, err = json.Marshal(bucketMeta)

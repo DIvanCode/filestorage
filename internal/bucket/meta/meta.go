@@ -6,6 +6,6 @@ import (
 )
 
 type BucketMeta struct {
-	BucketID  bucket.ID `json:"id"`
-	TrashTime time.Time `json:"trash_time"`
+	BucketID  bucket.ID  `json:"id"`
+	TrashTime *time.Time `json:"trash_time,omitempty"`
 }
