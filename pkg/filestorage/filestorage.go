@@ -14,6 +14,7 @@ import (
 
 type FileStorage interface {
 	GetBucket(ctx context.Context, id bucket.ID, extendTTL *time.Duration) (path string, unlock func(), err error)
+	GetBucketTrashTime(ctx context.Context, id bucket.ID) (*time.Time, error)
 	GetFile(ctx context.Context, bucketID bucket.ID, file string, extendTTL *time.Duration) (path string, unlock func(), err error)
 	ReserveBucket(ctx context.Context, id bucket.ID, ttl *time.Duration) (path string, commit, abort func() error, err error)
 	ReserveFile(ctx context.Context, bucketID bucket.ID, file string) (path string, commit, abort func() error, err error)

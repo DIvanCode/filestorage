@@ -122,6 +122,16 @@ func (s *Storage) GetBucket(
 	return
 }
 
+func (s *Storage) GetBucketTrashTime(ctx context.Context, id bucket.ID) (trashTime *time.Time, err error) {
+	meta, err := s.GetBucketMeta(ctx, id)
+	if err != nil {
+		err = fmt.Errorf("failed to get bucket meta: %w", err)
+		return
+	}
+
+	return meta.TrashTime, nil
+}
+
 // GetFile Возвращает абсолютный путь бакета bucketID, в котором лежит файл file
 // Бакет и файл блокируются в режиме на чтение. Для разблокировки необходимо вызвать unlock()
 // НЕ гарантируется консистентность данных при модификации
