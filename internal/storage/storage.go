@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
+
+	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
 
 	"github.com/DIvanCode/filestorage/internal/api/client"
 	lock "github.com/DIvanCode/filestorage/internal/lib/locker"
@@ -76,6 +77,8 @@ func NewStorage(log *slog.Logger, cfg config.Config) (*Storage, error) {
 
 func (s *Storage) Shutdown() {
 	s.trasher.Stop()
+	tmpDir := filepath.Join(s.rootDir, "tmp")
+	_ = os.RemoveAll(tmpDir)
 }
 
 // GetBucket Возвращает абсолютный путь бакета id
