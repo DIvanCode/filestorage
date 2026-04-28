@@ -13,6 +13,7 @@ import (
 )
 
 type FileStorage interface {
+	ListBuckets(ctx context.Context) ([]bucket.ID, error)
 	GetBucket(ctx context.Context, id bucket.ID, extendTTL *time.Duration) (path string, unlock func(), err error)
 	GetBucketTrashTime(ctx context.Context, id bucket.ID) (*time.Time, error)
 	GetFile(ctx context.Context, bucketID bucket.ID, file string, extendTTL *time.Duration) (path string, unlock func(), err error)

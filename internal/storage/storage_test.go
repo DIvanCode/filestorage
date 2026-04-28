@@ -94,6 +94,20 @@ func Test_Shutdown_RemovesTmpDir(t *testing.T) {
 	require.NoDirExists(t, tmpDir)
 }
 
+func Test_ListBuckets(t *testing.T) {
+	s := newTestStorage(t)
+
+	firstID := newBucketID(t, 2)
+	secondID := newBucketID(t, 1)
+	reserveBucket(t, s, firstID, time.Minute)
+	reserveBucket(t, s, secondID, time.Minute)
+
+	buckets, err := s.ListBuckets(context.Background())
+	require.NoError(t, err)
+
+	require.Equal(t, []bucket.ID{secondID, firstID}, buckets)
+}
+
 func Test_GetBucket_NotFound(t *testing.T) {
 	s := newTestStorage(t)
 

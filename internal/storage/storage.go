@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	. "github.com/DIvanCode/filestorage/internal/bucket/meta"
@@ -78,6 +79,53 @@ func NewStorage(log *slog.Logger, cfg config.Config) (*Storage, error) {
 func (s *Storage) Shutdown() {
 	s.trasher.Stop()
 	_ = os.RemoveAll(s.tmpDir)
+}
+
+func (s *Storage) ListBuckets(ctx context.Context) ([]bucket.ID, error) {
+	shards, err := os.ReadDir(s.rootDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read storage root: %w", err)
+	}
+
+	buckets := make([]bucket.ID, 0)
+	for _, shard := range shards {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		if !shard.IsDir() {
+			continue
+		}
+
+		shardPath := filepath.Join(s.rootDir, shard.Name())
+		entries, err := os.ReadDir(shardPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read storage shard %s: %w", shard.Name(), err)
+		}
+
+		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+
+			if !entry.IsDir() {
+				continue
+			}
+
+			var id bucket.ID
+			if err := id.FromString(entry.Name()); err != nil {
+				continue
+			}
+
+			buckets = append(buckets, id)
+		}
+	}
+
+	sort.Slice(buckets, func(i, j int) bool {
+		return buckets[i].String() < buckets[j].String()
+	})
+
+	return buckets, nil
 }
 
 // GetBucket Возвращает абсолютный путь бакета id
