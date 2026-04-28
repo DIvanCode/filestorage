@@ -77,8 +77,7 @@ func NewStorage(log *slog.Logger, cfg config.Config) (*Storage, error) {
 
 func (s *Storage) Shutdown() {
 	s.trasher.Stop()
-	tmpDir := filepath.Join(s.rootDir, "tmp")
-	_ = os.RemoveAll(tmpDir)
+	_ = os.RemoveAll(s.tmpDir)
 }
 
 // GetBucket Возвращает абсолютный путь бакета id
