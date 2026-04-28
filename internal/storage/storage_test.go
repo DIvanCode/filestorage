@@ -70,6 +70,30 @@ func reserveBucket(t *testing.T, s *testStorage, id bucket.ID, ttl time.Duration
 	require.NoError(t, commit())
 }
 
+func Test_Shutdown_RemovesTmpDir(t *testing.T) {
+	rootDir := t.TempDir()
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := config.Config{
+		RootDir: rootDir,
+		Trasher: config.TrasherConfig{
+			Workers:                  1,
+			CollectorIterationsDelay: 60,
+			WorkerIterationsDelay:    60,
+		},
+	}
+
+	storage, err := NewStorage(log, cfg)
+	require.NoError(t, err)
+
+	tmpDir := filepath.Join(rootDir, "tmp")
+	require.DirExists(t, tmpDir)
+
+	storage.Shutdown()
+
+	require.NoDirExists(t, tmpDir)
+}
+
 func Test_GetBucket_NotFound(t *testing.T) {
 	s := newTestStorage(t)
 
