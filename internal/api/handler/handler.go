@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/DIvanCode/filestorage/internal/api"
@@ -21,6 +22,7 @@ type (
 
 	fileStorage interface {
 		GetBucket(ctx context.Context, id bucket.ID, addTTL *time.Duration) (path string, unlock func(), err error)
+		GetFile(ctx context.Context, bucketID bucket.ID, file string, addTTL *time.Duration) (path string, unlock func(), err error)
 	}
 )
 
@@ -87,9 +89,11 @@ func (h *Handler) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, unlock, err := h.storage.GetBucket(r.Context(), id, nil)
+	path, unlock, err := h.storage.GetFile(r.Context(), id, req.File, nil)
 	if err != nil {
-		if errors.Is(err, ErrBucketNotFound) {
+		if errors.Is(err, ErrInvalidPath) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else if errors.Is(err, ErrBucketNotFound) || errors.Is(err, ErrFileNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -100,7 +104,13 @@ func (h *Handler) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/x-tar")
 	if err := tarstream.SendFile(req.File, path, w); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if errors.Is(err, ErrInvalidPath) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else if errors.Is(err, os.ErrNotExist) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 }

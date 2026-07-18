@@ -365,3 +365,107 @@ func Test_DownloadFile_AlreadyExists(t *testing.T) {
 	err = s.DownloadFile(context.Background(), "some-endpoint", bucketID, "a.txt")
 	require.NoError(t, err)
 }
+
+func Test_FileOperationsRejectUnsafePaths(t *testing.T) {
+	s := newTestStorage(t)
+	bucketID := newBucketID(t, 1)
+	reserveBucket(t, s, bucketID, time.Minute)
+
+	unsafePaths := []string{
+		"../outside.txt",
+		"nested/../../outside.txt",
+		`..\outside.txt`,
+		filepath.Join(s.tmpDir, "absolute.txt"),
+		"nul\x00.txt",
+	}
+
+	for _, file := range unsafePaths {
+		t.Run(file, func(t *testing.T) {
+			_, _, err := s.GetFile(context.Background(), bucketID, file, nil)
+			require.ErrorIs(t, err, ErrInvalidPath)
+
+			_, _, _, err = s.ReserveFile(context.Background(), bucketID, file)
+			require.ErrorIs(t, err, ErrInvalidPath)
+
+			err = s.DownloadFile(context.Background(), "http://localhost:1", bucketID, file)
+			require.ErrorIs(t, err, ErrInvalidPath)
+		})
+	}
+}
+
+func Test_GetAndCommitFileRejectSymlinkParent(t *testing.T) {
+	s := newTestStorage(t)
+	bucketID := newBucketID(t, 1)
+	reserveBucket(t, s, bucketID, time.Minute)
+
+	bucketPath := s.getAbsPath(bucketID)
+	outside := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0600))
+	if err := os.Symlink(outside, filepath.Join(bucketPath, "link")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	_, _, err := s.GetFile(context.Background(), bucketID, "link/secret.txt", nil)
+	require.ErrorIs(t, err, ErrInvalidPath)
+
+	path, commit, abort, err := s.ReserveFile(context.Background(), bucketID, "link/new.txt")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = abort() })
+	require.NoError(t, os.WriteFile(filepath.Join(path, "link", "new.txt"), []byte("new"), 0600))
+	require.ErrorIs(t, commit(), ErrInvalidPath)
+	require.NoFileExists(t, filepath.Join(outside, "new.txt"))
+}
+
+func Test_ReserveFileRejectsSymlinkContent(t *testing.T) {
+	s := newTestStorage(t)
+	bucketID := newBucketID(t, 1)
+	reserveBucket(t, s, bucketID, time.Minute)
+
+	path, commit, abort, err := s.ReserveFile(context.Background(), bucketID, "link.txt")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = abort() })
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	require.NoError(t, os.WriteFile(outside, []byte("outside"), 0600))
+	if err := os.Symlink(outside, filepath.Join(path, "link.txt")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	require.ErrorIs(t, commit(), ErrInvalidPath)
+	content, err := os.ReadFile(outside)
+	require.NoError(t, err)
+	require.Equal(t, []byte("outside"), content)
+}
+
+func Test_ReserveBucketUsesRestrictedMetadataPermissions(t *testing.T) {
+	s := newTestStorage(t)
+	bucketID := newBucketID(t, 1)
+
+	path, _, abort, err := s.ReserveBucket(context.Background(), bucketID, nil)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, abort()) }()
+
+	info, err := os.Stat(filepath.Join(path, s.getMetaFile(bucketID)))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0600), info.Mode().Perm())
+}
+
+func Test_ReserveBucketRejectsSymlinkMetadata(t *testing.T) {
+	s := newTestStorage(t)
+	bucketID := newBucketID(t, 1)
+
+	path, commit, abort, err := s.ReserveBucket(context.Background(), bucketID, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = abort() })
+	metaPath := filepath.Join(path, s.getMetaFile(bucketID))
+	require.NoError(t, os.Remove(metaPath))
+	outside := filepath.Join(t.TempDir(), "outside.json")
+	require.NoError(t, os.WriteFile(outside, []byte(`{"outside":true}`), 0600))
+	if err := os.Symlink(outside, metaPath); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	require.ErrorIs(t, commit(), ErrInvalidPath)
+	content, err := os.ReadFile(outside)
+	require.NoError(t, err)
+	require.Equal(t, []byte(`{"outside":true}`), content)
+}
