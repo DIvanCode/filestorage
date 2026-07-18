@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,23 +22,18 @@ import (
 
 type testStorage struct {
 	filestorage.FileStorage
-	tmpDir string
-	srv    *http.Server
-}
-
-func shutdown(srv *http.Server) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_ = srv.Shutdown(ctx)
+	tmpDir   string
+	srv      *httptest.Server
+	endpoint string
 }
 
 func (s *testStorage) cleanup() {
+	s.srv.Close()
 	s.Shutdown()
-	shutdown(s.srv)
 	_ = os.RemoveAll(s.tmpDir)
 }
 
-func newTestStorage(t *testing.T, rootDir, endpoint string) *testStorage {
+func newTestStorage(t *testing.T, rootDir string) *testStorage {
 	tmpDir, err := os.MkdirTemp("", rootDir)
 	require.NoError(t, err)
 
@@ -53,22 +48,14 @@ func newTestStorage(t *testing.T, rootDir, endpoint string) *testStorage {
 	}
 	mux := chi.NewRouter()
 
-	srv := &http.Server{
-		Addr:    endpoint,
-		Handler: mux,
-	}
-
 	storage, err := filestorage.New(log, cfg, mux)
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
 	}
 	require.NoError(t, err)
 
-	go func() {
-		_ = srv.ListenAndServe()
-	}()
-
-	s := &testStorage{FileStorage: storage, tmpDir: tmpDir, srv: srv}
+	srv := httptest.NewServer(mux)
+	s := &testStorage{FileStorage: storage, tmpDir: tmpDir, srv: srv, endpoint: srv.URL}
 	t.Cleanup(s.cleanup)
 	return s
 }
@@ -84,9 +71,9 @@ func Test_TransferBucket(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	src := newTestStorage(t, "src", "localhost:5252")
+	src := newTestStorage(t, "src")
 	defer src.Shutdown()
-	dst := newTestStorage(t, "dst", "localhost:5253")
+	dst := newTestStorage(t, "dst")
 	defer dst.Shutdown()
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
@@ -100,10 +87,13 @@ func Test_TransferBucket(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	require.NoError(t, commit())
+	_, unlockSource, err := src.GetBucket(context.Background(), ID, nil)
+	require.NoError(t, err)
+	unlockSource()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadBucket(ctx, "http://0.0.0.0:5252", ID, &ttl)
+	err = dst.DownloadBucket(ctx, src.endpoint, ID, &ttl)
 	require.NoError(t, err)
 
 	path, unlock, err := dst.GetBucket(context.Background(), ID, nil)
@@ -121,9 +111,9 @@ func Test_BucketExists_TransferFile(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	src := newTestStorage(t, "src", "localhost:5252")
+	src := newTestStorage(t, "src")
 	defer src.Shutdown()
-	dst := newTestStorage(t, "dst", "localhost:5253")
+	dst := newTestStorage(t, "dst")
 	defer dst.Shutdown()
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
@@ -153,7 +143,7 @@ func Test_BucketExists_TransferFile(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a.txt")
+	err = dst.DownloadFile(ctx, src.endpoint, ID, "a.txt")
 	require.NoError(t, err)
 
 	path, unlock, err := dst.GetBucket(context.Background(), ID, nil)
@@ -175,9 +165,9 @@ func Test_BucketNotExists_TransferFile(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	src := newTestStorage(t, "src", "localhost:5252")
+	src := newTestStorage(t, "src")
 	defer src.Shutdown()
-	dst := newTestStorage(t, "dst", "localhost:5253")
+	dst := newTestStorage(t, "dst")
 	defer dst.Shutdown()
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
@@ -203,7 +193,7 @@ func Test_BucketNotExists_TransferFile(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadFile(ctx, "http://localhost:5252", ID, "a/a.txt")
+	err = dst.DownloadFile(ctx, src.endpoint, ID, "a/a.txt")
 	require.NoError(t, err)
 
 	path, unlock, err := dst.GetBucket(context.Background(), ID, nil)
@@ -223,9 +213,9 @@ func Test_DownloadFailed(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	src := newTestStorage(t, "src", "localhost:5252")
+	src := newTestStorage(t, "src")
 	defer src.Shutdown()
-	dst := newTestStorage(t, "dst", "localhost:5253")
+	dst := newTestStorage(t, "dst")
 	defer dst.Shutdown()
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
@@ -240,11 +230,11 @@ func Test_DownloadFailed(t *testing.T) {
 
 	require.NoError(t, commit())
 
-	shutdown(src.srv)
+	src.srv.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, &ttl)
+	err = dst.DownloadBucket(ctx, src.endpoint, ID, &ttl)
 	require.Error(t, err)
 }
 
@@ -253,9 +243,9 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	src := newTestStorage(t, "src", "localhost:5252")
+	src := newTestStorage(t, "src")
 	defer src.Shutdown()
-	dst := newTestStorage(t, "dst", "localhost:5253")
+	dst := newTestStorage(t, "dst")
 	defer dst.Shutdown()
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
@@ -272,7 +262,7 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, &ttl)
+	err = dst.DownloadBucket(ctx, src.endpoint, ID, &ttl)
 	require.NoError(t, err)
 
 	path, unlock, err := dst.GetBucket(context.Background(), ID, nil)
@@ -284,11 +274,11 @@ func Test_DoNotRepeatDownload(t *testing.T) {
 	_, err = os.Stat(filepath.Join(path, "a.txt"))
 	require.NoError(t, err)
 
-	shutdown(src.srv)
+	src.srv.Close()
 
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, &ttl)
+	err = dst.DownloadBucket(ctx, src.endpoint, ID, &ttl)
 	require.NoError(t, err)
 }
 
@@ -297,9 +287,9 @@ func Test_BucketTrashedAfterTrashTime(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	src := newTestStorage(t, "src", "localhost:5252")
+	src := newTestStorage(t, "src")
 	defer src.Shutdown()
-	dst := newTestStorage(t, "dst", "localhost:5253")
+	dst := newTestStorage(t, "dst")
 	defer dst.Shutdown()
 
 	ID := newBucketID(t, "0000000000000000000000000000000000000001")
@@ -327,6 +317,6 @@ func Test_BucketTrashedAfterTrashTime(t *testing.T) {
 	defer cancel()
 
 	ttl = time.Minute
-	err = dst.DownloadBucket(ctx, "http://localhost:5252", ID, &ttl)
+	err = dst.DownloadBucket(ctx, src.endpoint, ID, &ttl)
 	require.Error(t, err)
 }

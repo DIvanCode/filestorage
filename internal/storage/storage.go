@@ -16,6 +16,7 @@ import (
 
 	"github.com/DIvanCode/filestorage/internal/api/client"
 	lock "github.com/DIvanCode/filestorage/internal/lib/locker"
+	"github.com/DIvanCode/filestorage/internal/lib/safepath"
 	trash "github.com/DIvanCode/filestorage/internal/trasher"
 	"github.com/DIvanCode/filestorage/pkg/bucket"
 	"github.com/DIvanCode/filestorage/pkg/config"
@@ -38,12 +39,12 @@ func NewStorage(log *slog.Logger, cfg config.Config) (*Storage, error) {
 	if err := os.RemoveAll(tmpDir); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(tmpDir, 0777); err != nil {
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
 		return nil, err
 	}
 
 	rootDir := filepath.Join(cfg.RootDir, "storage")
-	if err := os.MkdirAll(rootDir, 0777); err != nil {
+	if err := os.MkdirAll(rootDir, 0755); err != nil {
 		return nil, err
 	}
 
@@ -66,7 +67,7 @@ func NewStorage(log *slog.Logger, cfg config.Config) (*Storage, error) {
 
 	for i := range 256 {
 		shard := hex.EncodeToString([]byte{uint8(i)})
-		if err := os.MkdirAll(filepath.Join(rootDir, shard), 0777); err != nil {
+		if err := os.MkdirAll(filepath.Join(rootDir, shard), 0755); err != nil {
 			return nil, err
 		}
 	}
@@ -159,15 +160,7 @@ func (s *Storage) GetBucket(
 		unlockBucket()
 	}
 
-	path = s.getAbsPath(id)
-	if _, err = os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			err = ErrBucketNotFound
-		} else {
-			err = fmt.Errorf("failed to get bucket info: %w", err)
-		}
-		return
-	}
+	path, err = s.getSafeBucketPath(id)
 
 	return
 }
@@ -191,6 +184,11 @@ func (s *Storage) GetFile(
 	file string,
 	extendTTL *time.Duration,
 ) (path string, unlock func(), err error) {
+	file, _, err = safepath.Resolve(s.getAbsPath(bucketID), file)
+	if err != nil {
+		err = fmt.Errorf("failed to validate file path: %w", err)
+		return
+	}
 	if err = s.extendTTL(ctx, bucketID, extendTTL); err != nil {
 		err = fmt.Errorf("failed to extend bucket ttl: %w", err)
 		return
@@ -212,9 +210,9 @@ func (s *Storage) GetFile(
 
 	// read lock file in bucket
 	unlockFile := func() {
-		s.locker.ReadUnlock(bucketID.String() + file)
+		s.locker.ReadUnlock(s.fileLockKey(bucketID, file))
 	}
-	if err = s.locker.ReadLock(ctx, bucketID.String()+file); err != nil {
+	if err = s.locker.ReadLock(ctx, s.fileLockKey(bucketID, file)); err != nil {
 		err = fmt.Errorf("failed to read lock file in bucket: %w", err)
 		return
 	}
@@ -230,12 +228,20 @@ func (s *Storage) GetFile(
 	}
 
 	path = s.getAbsPath(bucketID)
-	if _, err = os.Stat(filepath.Join(s.getAbsPath(bucketID), file)); err != nil {
+	info, _, statErr := safepath.Lstat(path, file)
+	if statErr != nil {
+		err = statErr
 		if os.IsNotExist(err) {
 			err = ErrFileNotFound
+		} else if errors.Is(err, ErrInvalidPath) {
+			err = fmt.Errorf("failed to validate file path: %w", err)
 		} else {
 			err = fmt.Errorf("failed to get bucket info: %w", err)
 		}
+		return
+	}
+	if !info.IsDir() && !info.Mode().IsRegular() {
+		err = fmt.Errorf("failed to validate file path: %w", ErrInvalidPath)
 		return
 	}
 
@@ -277,7 +283,7 @@ func (s *Storage) ReserveBucket(
 
 	path = filepath.Join(s.tmpDir, id.String())
 	create := func() error {
-		if err = os.MkdirAll(path, 0777); err != nil {
+		if err = os.MkdirAll(path, 0755); err != nil {
 			return fmt.Errorf("failed to create temp directory: %w", err)
 		}
 
@@ -295,7 +301,7 @@ func (s *Storage) ReserveBucket(
 		}
 
 		var f *os.File
-		f, err = os.OpenFile(filepath.Join(path, s.getMetaFile(id)), os.O_CREATE|os.O_WRONLY, 0777)
+		f, err = os.OpenFile(filepath.Join(path, s.getMetaFile(id)), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
 			return fmt.Errorf("failed to create bucket meta: %w", err)
 		}
@@ -327,6 +333,20 @@ func (s *Storage) ReserveBucket(
 
 	commit = func() error {
 		defer unlockBucket()
+		info, statErr := os.Lstat(path)
+		if statErr != nil {
+			return fmt.Errorf("failed to inspect reserved bucket: %w", statErr)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("failed to inspect reserved bucket: %w", ErrInvalidPath)
+		}
+		metaInfo, _, metaErr := safepath.Lstat(path, s.getMetaFile(id))
+		if metaErr != nil {
+			return fmt.Errorf("failed to inspect reserved bucket metadata: %w", metaErr)
+		}
+		if !metaInfo.Mode().IsRegular() {
+			return fmt.Errorf("failed to inspect reserved bucket metadata: %w", ErrInvalidPath)
+		}
 		if err = os.Rename(path, s.getAbsPath(id)); err != nil {
 			return fmt.Errorf("failed to move bucket to storage: %w", err)
 		}
@@ -352,6 +372,12 @@ func (s *Storage) ReserveFile(
 	bucketID bucket.ID,
 	file string,
 ) (path string, commit, abort func() error, err error) {
+	file, _, err = safepath.Resolve(s.getAbsPath(bucketID), file)
+	if err != nil {
+		err = fmt.Errorf("failed to validate file path: %w", err)
+		return
+	}
+
 	// read lock bucket
 	bucketUnlocked := false
 	unlockBucket := func() {
@@ -380,10 +406,10 @@ func (s *Storage) ReserveFile(
 	unlockFile := func() {
 		if !fileUnlocked {
 			fileUnlocked = true
-			s.locker.WriteUnlock(bucketID.String() + file)
+			s.locker.WriteUnlock(s.fileLockKey(bucketID, file))
 		}
 	}
-	if err = s.locker.WriteLock(ctx, bucketID.String()+file); err != nil {
+	if err = s.locker.WriteLock(ctx, s.fileLockKey(bucketID, file)); err != nil {
 		err = fmt.Errorf("failed to write lock file: %w", err)
 		return
 	}
@@ -400,10 +426,10 @@ func (s *Storage) ReserveFile(
 
 	path = filepath.Join(s.tmpDir, bucketID.String()+"_"+uuid.New().String())
 	create := func() error {
-		if err = os.MkdirAll(path, 0777); err != nil {
+		if err = os.MkdirAll(path, 0755); err != nil {
 			return fmt.Errorf("failed to create temp directory: %w", err)
 		}
-		if err = os.MkdirAll(filepath.Dir(filepath.Join(path, file)), 0777); err != nil {
+		if err = safepath.MkdirAll(path, filepath.Dir(file), 0755); err != nil {
 			return fmt.Errorf("failed to create temp subdirectories: %w", err)
 		}
 		return nil
@@ -422,12 +448,32 @@ func (s *Storage) ReserveFile(
 		defer unlockBucket()
 		defer unlockFile()
 
-		dstPath := filepath.Join(s.getAbsPath(bucketID), file)
-		if err = os.MkdirAll(filepath.Dir(dstPath), 0777); err != nil {
+		info, srcPath, statErr := safepath.Lstat(path, file)
+		if statErr != nil {
+			return fmt.Errorf("failed to inspect reserved file: %w", statErr)
+		}
+		if !info.IsDir() && !info.Mode().IsRegular() {
+			return fmt.Errorf("failed to inspect reserved file: %w", ErrInvalidPath)
+		}
+
+		bucketPath := s.getAbsPath(bucketID)
+		if err = safepath.MkdirAll(bucketPath, filepath.Dir(file), 0755); err != nil {
 			return fmt.Errorf("failed to create subdirectories in storage: %w", err)
 		}
-		if err = os.Rename(filepath.Join(path, file), dstPath); err != nil {
+		if _, _, statErr = safepath.Lstat(bucketPath, file); statErr == nil {
+			return ErrFileAlreadyExists
+		} else if !os.IsNotExist(statErr) {
+			return fmt.Errorf("failed to inspect destination file: %w", statErr)
+		}
+		_, dstPath, resolveErr := safepath.Resolve(bucketPath, file)
+		if resolveErr != nil {
+			return fmt.Errorf("failed to resolve destination file: %w", resolveErr)
+		}
+		if err = os.Rename(srcPath, dstPath); err != nil {
 			return fmt.Errorf("failed to move file to storage: %w", err)
+		}
+		if err = os.RemoveAll(path); err != nil {
+			return fmt.Errorf("failed to remove temp directory: %w", err)
 		}
 
 		return nil
@@ -519,17 +565,21 @@ func (s *Storage) GetBucketMeta(
 	}
 	defer unlockBucket()
 
-	path := s.getAbsPath(id)
-	if _, err = os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			err = ErrBucketNotFound
-		} else {
-			err = fmt.Errorf("failed to get bucket info: %w", err)
-		}
+	path, err := s.getSafeBucketPath(id)
+	if err != nil {
 		return
 	}
 
-	f, err := os.OpenFile(filepath.Join(path, s.getMetaFile(id)), os.O_RDONLY, 0777)
+	metaInfo, metaPath, err := safepath.Lstat(path, s.getMetaFile(id))
+	if err != nil {
+		err = fmt.Errorf("failed to inspect bucket meta file: %w", err)
+		return
+	}
+	if !metaInfo.Mode().IsRegular() {
+		err = fmt.Errorf("failed to inspect bucket meta file: %w", ErrInvalidPath)
+		return
+	}
+	f, err := os.Open(metaPath)
 	if err != nil {
 		err = fmt.Errorf("failed to open bucket meta file: %w", err)
 		return
@@ -582,8 +632,18 @@ func (s *Storage) extendTTL(
 
 	var bucketMeta BucketMeta
 
-	path := s.getAbsPath(id)
-	f, err := os.OpenFile(filepath.Join(path, s.getMetaFile(id)), os.O_RDWR, 0777)
+	path, err := s.getSafeBucketPath(id)
+	if err != nil {
+		return err
+	}
+	metaInfo, metaPath, err := safepath.Lstat(path, s.getMetaFile(id))
+	if err != nil {
+		return fmt.Errorf("failed to inspect bucket meta: %w", err)
+	}
+	if !metaInfo.Mode().IsRegular() {
+		return fmt.Errorf("failed to inspect bucket meta: %w", ErrInvalidPath)
+	}
+	f, err := os.OpenFile(metaPath, os.O_RDWR, 0)
 	if err != nil {
 		return fmt.Errorf("failed to read bucket meta: %w", err)
 	}
@@ -618,13 +678,31 @@ func (s *Storage) getMetaFile(id bucket.ID) string {
 }
 
 func (s *Storage) existsBucket(id bucket.ID) bool {
-	path := s.getAbsPath(id)
-	_, err := os.Stat(path)
+	_, err := s.getSafeBucketPath(id)
 	return err == nil
 }
 
 func (s *Storage) existsFile(bucketID bucket.ID, file string) bool {
-	path := filepath.Join(s.getAbsPath(bucketID), file)
-	_, err := os.Stat(path)
+	_, _, err := safepath.Lstat(s.getAbsPath(bucketID), file)
 	return err == nil
+
+}
+
+func (s *Storage) fileLockKey(bucketID bucket.ID, file string) string {
+	return bucketID.String() + "/" + file
+}
+
+func (s *Storage) getSafeBucketPath(id bucket.ID) (string, error) {
+	path := s.getAbsPath(id)
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return path, ErrBucketNotFound
+	}
+	if err != nil {
+		return path, fmt.Errorf("failed to get bucket info: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return path, fmt.Errorf("failed to get bucket info: %w", ErrInvalidPath)
+	}
+	return path, nil
 }
