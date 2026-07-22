@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -122,6 +123,42 @@ func TestTarStreamSendFileReceive(t *testing.T) {
 	checkFileNotExist(filepath.Join(to, "a", "z.bin"))
 	checkFileNotExist(filepath.Join(to, "a", "x"))
 	checkFileNotExist(filepath.Join(to, "a", "x.bin.backup"))
+}
+
+func TestTarStreamSendFileReceiveStreaming(t *testing.T) {
+	base := t.TempDir()
+	t.Chdir(base)
+	from := "from"
+	to := "to"
+	require.NoError(t, os.Mkdir(from, 0755))
+	require.NoError(t, os.Mkdir(to, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(from, "checker.cpp"), []byte("checker"), 0755))
+
+	reader, writer := io.Pipe()
+	sendErr := make(chan error, 1)
+	go func() {
+		err := SendFile("checker.cpp", from, writer)
+		_ = writer.CloseWithError(err)
+		sendErr <- err
+	}()
+
+	require.NoError(t, Receive(to, reader))
+	require.NoError(t, <-sendErr)
+	require.FileExists(t, filepath.Join(to, "checker.cpp"))
+}
+
+func TestSendErrorBeforeFirstHeaderDoesNotWriteEmptyArchive(t *testing.T) {
+	base := t.TempDir()
+	t.Chdir(base)
+	require.NoError(t, os.Mkdir("from", 0755))
+	require.NoError(t, os.WriteFile(filepath.Join("from", "checker.cpp"), []byte("checker"), 0644))
+	absoluteFile, err := filepath.Abs(filepath.Join("from", "checker.cpp"))
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	err = send("from", absoluteFile, true, &buf)
+	require.Error(t, err)
+	require.Empty(t, buf.Bytes())
 }
 
 func TestTarStreamExecutablePermissions(t *testing.T) {

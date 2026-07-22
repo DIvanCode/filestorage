@@ -94,6 +94,27 @@ func Test_Shutdown_RemovesTmpDir(t *testing.T) {
 	require.NoDirExists(t, tmpDir)
 }
 
+func Test_NewStorageNormalizesRelativeRoot(t *testing.T) {
+	base := t.TempDir()
+	t.Chdir(base)
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	storage, err := NewStorage(log, config.Config{
+		RootDir: "file_storage/coordinator",
+		Trasher: config.TrasherConfig{
+			Workers:                  1,
+			CollectorIterationsDelay: 60,
+			WorkerIterationsDelay:    60,
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(storage.Shutdown)
+
+	require.True(t, filepath.IsAbs(storage.rootDir))
+	require.True(t, filepath.IsAbs(storage.tmpDir))
+	require.DirExists(t, filepath.Join(base, "file_storage", "coordinator", "storage"))
+}
+
 func Test_ListBuckets(t *testing.T) {
 	s := newTestStorage(t)
 

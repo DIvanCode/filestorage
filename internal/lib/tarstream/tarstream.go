@@ -35,19 +35,27 @@ var defaultLimits = Limits{
 
 // Send recursively serializes a directory without following symlinks.
 func Send(dir string, w io.Writer) error {
-	if err := validateSendRoot(dir); err != nil {
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve send root: %w", err)
+	}
+	if err := validateSendRoot(root); err != nil {
 		return err
 	}
-	return send(dir, dir, false, w)
+	return send(root, root, false, w)
 }
 
 // SendFile serializes exactly one selected regular file or directory tree.
 func SendFile(file, dir string, w io.Writer) error {
-	clean, _, err := safepath.Resolve(dir, file)
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve send root: %w", err)
+	}
+	clean, _, err := safepath.Resolve(root, file)
 	if err != nil {
 		return fmt.Errorf("failed to validate selected file: %w", err)
 	}
-	info, target, err := safepath.Lstat(dir, clean)
+	info, target, err := safepath.Lstat(root, clean)
 	if err != nil {
 		return fmt.Errorf("failed to locate selected file: %w", err)
 	}
@@ -55,7 +63,7 @@ func SendFile(file, dir string, w io.Writer) error {
 		return fmt.Errorf("%w: selected path has unsupported type", fserrors.ErrInvalidPath)
 	}
 
-	return send(dir, target, true, w)
+	return send(root, target, true, w)
 }
 
 func send(root, start string, includeStart bool, w io.Writer) error {
@@ -118,7 +126,6 @@ func send(root, start string, includeStart bool, w io.Writer) error {
 		return nil
 	})
 	if err != nil {
-		_ = tw.Close()
 		return err
 	}
 	if err := tw.Close(); err != nil {
