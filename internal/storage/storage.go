@@ -35,7 +35,12 @@ type Storage struct {
 }
 
 func NewStorage(log *slog.Logger, cfg config.Config) (*Storage, error) {
-	tmpDir := filepath.Join(cfg.RootDir, "tmp")
+	configuredRoot, err := filepath.Abs(cfg.RootDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve storage root: %w", err)
+	}
+
+	tmpDir := filepath.Join(configuredRoot, "tmp")
 	if err := os.RemoveAll(tmpDir); err != nil {
 		return nil, err
 	}
@@ -43,7 +48,7 @@ func NewStorage(log *slog.Logger, cfg config.Config) (*Storage, error) {
 		return nil, err
 	}
 
-	rootDir := filepath.Join(cfg.RootDir, "storage")
+	rootDir := filepath.Join(configuredRoot, "storage")
 	if err := os.MkdirAll(rootDir, 0755); err != nil {
 		return nil, err
 	}
