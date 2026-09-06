@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,7 +18,8 @@ import (
 
 type (
 	Handler struct {
-		storage fileStorage
+		storage         fileStorage
+		internalAuthKey string
 	}
 
 	fileStorage interface {
@@ -26,15 +28,28 @@ type (
 	}
 )
 
-func NewHandler(storage fileStorage) *Handler {
+func NewHandler(storage fileStorage, internalAuthKey string) *Handler {
 	return &Handler{
-		storage: storage,
+		storage:         storage,
+		internalAuthKey: internalAuthKey,
 	}
 }
 
 func (h *Handler) Register(mux *chi.Mux) {
-	mux.HandleFunc("/bucket", h.handleDownloadBucket)
-	mux.HandleFunc("/file", h.handleDownloadFile)
+	mux.With(h.authenticate).HandleFunc("/bucket", h.handleDownloadBucket)
+	mux.With(h.authenticate).HandleFunc("/file", h.handleDownloadFile)
+}
+
+func (h *Handler) authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys := r.Header.Values("internal-auth")
+		if h.internalAuthKey == "" || len(keys) != 1 ||
+			subtle.ConstantTimeCompare([]byte(keys[0]), []byte(h.internalAuthKey)) != 1 {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (h *Handler) handleDownloadBucket(w http.ResponseWriter, r *http.Request) {

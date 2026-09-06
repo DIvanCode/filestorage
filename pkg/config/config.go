@@ -1,8 +1,9 @@
 package config
 
 type Config struct {
-	RootDir string        `yaml:"root_dir" env:"ROOT_DIR"`
-	Trasher TrasherConfig `yaml:"trasher" env-prefix:"TRASHER_"`
+	InternalAuthKey string        `yaml:"internal_auth_key" env:"INTERNAL_AUTH_KEY"`
+	RootDir         string        `yaml:"root_dir" env:"ROOT_DIR"`
+	Trasher         TrasherConfig `yaml:"trasher" env-prefix:"TRASHER_"`
 }
 
 type TrasherConfig struct {

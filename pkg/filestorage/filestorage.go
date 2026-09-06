@@ -29,6 +29,6 @@ func New(log *slog.Logger, cfg config.Config, mux *chi.Mux) (FileStorage, error)
 	if err != nil {
 		return nil, err
 	}
-	handler.NewHandler(s).Register(mux)
+	handler.NewHandler(s, cfg.InternalAuthKey).Register(mux)
 	return s, nil
 }
