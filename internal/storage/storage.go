@@ -25,8 +25,9 @@ import (
 )
 
 type Storage struct {
-	rootDir string
-	tmpDir  string
+	internalAuthKey string
+	rootDir         string
+	tmpDir          string
 
 	trasher *trash.Trasher
 	locker  *lock.Locker
@@ -61,8 +62,9 @@ func NewStorage(log *slog.Logger, cfg config.Config) (*Storage, error) {
 	locker := lock.NewLocker()
 
 	storage := &Storage{
-		rootDir: rootDir,
-		tmpDir:  tmpDir,
+		internalAuthKey: cfg.InternalAuthKey,
+		rootDir:         rootDir,
+		tmpDir:          tmpDir,
 
 		trasher: trasher,
 		locker:  locker,
@@ -513,7 +515,7 @@ func (s *Storage) DownloadBucket(
 		return fmt.Errorf("failed to reserve bucket: %w", err)
 	}
 
-	c := client.NewClient(endpoint)
+	c := client.NewClient(endpoint, s.internalAuthKey)
 	if err = c.DownloadBucket(ctx, id, path); err != nil {
 		_ = abort()
 		return fmt.Errorf("failed to download bucket: %w", err)
@@ -543,7 +545,7 @@ func (s *Storage) DownloadFile(
 		return fmt.Errorf("failed to reserve file: %w", err)
 	}
 
-	c := client.NewClient(endpoint)
+	c := client.NewClient(endpoint, s.internalAuthKey)
 	if err := c.DownloadFile(ctx, bucketID, file, path); err != nil {
 		_ = abort()
 		return fmt.Errorf("failed to download file: %w", err)

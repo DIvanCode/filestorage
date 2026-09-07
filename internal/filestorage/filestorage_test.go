@@ -39,7 +39,8 @@ func newTestStorage(t *testing.T, rootDir string) *testStorage {
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := config.Config{
-		RootDir: tmpDir,
+		RootDir:         tmpDir,
+		InternalAuthKey: "test-internal-auth",
 		Trasher: config.TrasherConfig{
 			Workers:                  1,
 			CollectorIterationsDelay: 1,
